@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>#MOSHCODING — Code hard. Mosh harder.</title>
+  <meta name="description" content="A Spotify playlist for developers who code hard and mosh harder. Point any domain at moshcoding for an instant metal coming-soon page with an email waitlist." />
+  <meta property="og:title" content="#MOSHCODING — Code hard. Mosh harder." />
+  <meta property="og:description" content="A Spotify playlist for developers who code hard and mosh harder." />
+  <meta property="og:image" content="/assets/mascot-hero.png" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💀</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="scan" aria-hidden="true"></div>
+
+  <!-- ============================ MAIN SITE ============================ -->
+  <div id="site" hidden>
+    <header class="nav">
+      <a class="wm" href="/">#MOSH<span>CODING</span></a>
+      <nav>
+        <a href="#chaos">The one-liner</a>
+        <a href="#waitlist">Waitlist</a>
+        <a class="ghost" href="https://github.com/moshcoder/moshcoding" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot"></span> A Spotify playlist for developers</p>
+        <h1 class="title">CODE HARD.<br /><span class="acid">MOSH HARDER.</span></h1>
+        <pre class="code" aria-hidden="true"><span class="c-kw">while</span> (alive) {
+  <span class="c-fn">code</span>();
+  <span class="c-fn">mosh</span>();
+  <span class="c-fn">repeat</span>();
+}<span class="c-cm"> // no bugs, only features</span></pre>
+        <div class="cta-row">
+          <a href="#waitlist" class="btn btn-acid">Join the pit</a>
+          <a href="#chaos" class="btn btn-ghost">Give a domain its page →</a>
+        </div>
+      </div>
+      <div class="hero-art">
+        <img src="/assets/mascot-hero.png" alt="Moshcoding skeleton coder mascot" />
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span>BUILD. BREAK. REPEAT.</span><span class="sep">✦</span>
+        <span>NO BUGS, JUST FEATURES</span><span class="sep">✦</span>
+        <span>DEADLINES ARE FOR THE WEAK</span><span class="sep">✦</span>
+        <span>PUSH CODE, START PITS</span><span class="sep">✦</span>
+        <span>BUILD. BREAK. REPEAT.</span><span class="sep">✦</span>
+        <span>NO BUGS, JUST FEATURES</span><span class="sep">✦</span>
+        <span>DEADLINES ARE FOR THE WEAK</span><span class="sep">✦</span>
+        <span>PUSH CODE, START PITS</span><span class="sep">✦</span>
+      </div>
+    </div>
+
+    <!-- the ?dn= product -->
+    <section id="chaos" class="chaos">
+      <p class="tag">// turn any domain into chaos</p>
+      <h2>One line. A metal coming-soon page.</h2>
+      <p class="lede">Point any domain at moshcoding and it gets a blacked-out, poison-green launch page with a working email waitlist. No build, no deploy.</p>
+      <div class="url-demo">
+        <code class="u">moshcoding.com/?dn=<input id="dnInput" type="text" spellcheck="false" placeholder="yourdomain.com" aria-label="your domain" /></code>
+        <button id="summon" class="btn btn-acid">Summon it</button>
+      </div>
+      <p class="hint">Try it: <a href="/?dn=example.com">example.com</a> · <a href="/?dn=killer-startup.io">killer-startup.io</a></p>
+    </section>
+
+    <section class="badges">
+      <figure><img src="/assets/badge-code-hard.png" alt="Code Hard, Ras Harder badge" /><figcaption>Code Hard</figcaption></figure>
+      <figure><img src="/assets/badge-no-bugs.png" alt="No Bugs, Just Features badge" /><figcaption>No Bugs, Just Features</figcaption></figure>
+      <figure><img src="/assets/badge-push-code.png" alt="Push Code, Start Pits badge" /><figcaption>Push Code, Start Pits</figcaption></figure>
+    </section>
+
+    <!-- waitlist -->
+    <section id="waitlist" class="waitlist">
+      <h2>Get in the pit</h2>
+      <p class="lede">Drop your email. We'll hit you when the playlist and the merch drop.</p>
+      <form id="siteForm" class="wform" novalidate>
+        <input type="email" name="email" placeholder="you@dev.null" required autocomplete="email" />
+        <button type="submit" class="btn btn-acid">Join the waitlist</button>
+      </form>
+      <p id="siteMsg" class="fmsg" role="status" aria-live="polite"></p>
+    </section>
+
+    <footer class="foot">
+      <a class="wm sm" href="/">#MOSHCODING</a>
+      <p class="legal">
+        &copy; 2026 <a href="https://moshcoding.com" rel="noopener">powered by moshcoding.com</a> ·
+        Profullstack, Inc. (dba moshcoding)
+      </p>
+    </footer>
+  </div>
+
+  <!-- ============================ TENANT MODE ============================ -->
+  <div id="tenant" hidden>
+    <div class="tenant-wrap">
+      <a class="powered top" href="https://moshcoding.com" rel="noopener">⚡ powered by <b>#moshcoding</b></a>
+      <p class="t-domain" id="tDomain">yourdomain.com</p>
+      <h1 class="t-headline"><span id="tBrand">Yourdomain</span> <em id="tHead">IS COMING</em></h1>
+      <p class="t-tag" id="tTag">Something heavy is compiling.</p>
+      <p class="t-sub" id="tSub">Join the pit. Be first in the door when it drops.</p>
+      <form id="tenantForm" class="wform big" novalidate>
+        <input type="email" name="email" placeholder="you@dev.null" required autocomplete="email" />
+        <button type="submit" class="btn btn-acid" id="tCta">Join the waitlist</button>
+      </form>
+      <p id="tenantMsg" class="fmsg" role="status" aria-live="polite"></p>
+
+      <p class="t-hashtag" id="tHashtag" hidden></p>
+      <nav class="links" id="tLinks" aria-label="Social links"></nav>
+
+      <footer class="t-foot">
+        &copy; 2026 <a href="https://moshcoding.com" rel="noopener">powered by moshcoding.com</a>
+      </footer>
+    </div>
+  </div>
+
+  <noscript><div style="padding:2rem;color:#9EF01A;font-family:monospace">Enable JavaScript to enter the pit.</div></noscript>
+  <script src="/app.js"></script>
+</body>
+</html>
