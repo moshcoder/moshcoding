@@ -42,10 +42,42 @@ Square variants (`*_square.png`) are packaged for social avatars/tiles. Individu
 - **Voice** — `code(); mosh(); repeat();` · Code Hard, Mosh Harder · Build. Break. Repeat. · No Bugs, Just Features · Push Code, Start Pits · Deadlines Are For The Weak.
 - **Domain** — MOSHCODING.COM · always paired with the Spotify mark.
 
+## The app
+
+A killer `#MOSHCODING` landing page **plus** a one-liner product: point any domain at
+moshcoding and it renders a blacked-out, poison-green coming-soon page with a working
+email waitlist.
+
+```
+moshcoding.com/?dn=yourdomain.com
+```
+
+- **Tenant mode** — `?dn=<domain>` swaps the site for a focused launch page for that
+  domain. Copy/accent auto-derive from the domain name, or drop a
+  `configs/<domain>.json` override (`brand`, `headline`, `tagline`, `sub`, `accent`, `cta`).
+  Every tenant page carries a **"© 2026 powered by moshcoding.com"** link.
+- **Waitlist** — `POST /api/waitlist { email, dn? }`, stored append-only in
+  `$DATA_DIR/waitlist.jsonl` (deduped per email+domain). No database, no native deps.
+
+### Run it
+
+```bash
+npm install
+npm start            # http://localhost:8080
+# tenant demo:       http://localhost:8080/?dn=killer-startup.io
+```
+
+Env: `PORT` (default 8080) · `DATA_DIR` (default `./data`; point at a mounted volume in prod).
+
+### Deploy (Railway)
+
+Nixpacks auto-builds (`railway.json` sets the start command + `/healthz`). For persistent
+signups, mount a volume and set `DATA_DIR` to it (e.g. `/data`). No other config required.
+
 ## Links
 
 - 🎧 Spotify playlist — _TODO: add link_
-- 🌐 moshcoding.com — _TODO: ship landing page_
+- 🌐 moshcoding.com — landing page + `?dn=` waitlist (this repo)
 - 𝕏 / TikTok — @moshcoding (fallback @moshcoder)
 
 ## License
