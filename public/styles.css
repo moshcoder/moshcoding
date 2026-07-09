@@ -76,6 +76,16 @@ img { max-width: 100%; display: block; }
 .nav nav a:hover { color: var(--acid); }
 .nav .ghost { border: 1px solid var(--line); padding: 7px 12px; }
 .nav .ghost:hover { border-color: var(--acid); }
+.auth-slot { display: inline-flex; align-items: center; gap: 12px; }
+.auth-slot .who { color: var(--acid); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-btn {
+  font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+  border: 1px solid var(--line); background: transparent; color: var(--bone);
+  padding: 7px 12px; cursor: pointer; line-height: 1;
+}
+.auth-btn:hover { border-color: var(--acid); color: var(--acid); }
+.auth-btn.primary { background: var(--acid); color: #0a0a0a; border-color: var(--acid); }
+.auth-btn.primary:hover { background: #b6ff3a; color: #0a0a0a; }
 
 /* ---------------- hero ---------------- */
 .hero {

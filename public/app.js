@@ -49,6 +49,27 @@
     }
   }
 
+  /* -------- auth slot in the nav (Login with CoinPayPortal) -------- */
+  async function renderAuth() {
+    const slot = document.getElementById("authSlot");
+    if (!slot) return;
+    try {
+      const { authEnabled, user } = await (await fetch("/api/me")).json();
+      if (!authEnabled) return; // login not configured → show nothing
+      if (user) {
+        slot.innerHTML =
+          `<span class="who" title="${user.email || ""}">${user.email || user.name || "signed in"}</span>` +
+          `<button class="auth-btn" id="logoutBtn">Log out</button>`;
+        slot.querySelector("#logoutBtn").addEventListener("click", async () => {
+          await fetch("/auth/logout", { method: "POST" });
+          location.reload();
+        });
+      } else {
+        slot.innerHTML = `<a class="auth-btn primary" href="/auth/login">Log in with CoinPay</a>`;
+      }
+    } catch { /* ignore */ }
+  }
+
   const dn = rawDn ? cleanDomain(rawDn) : null;
 
   if (dn && isDomain(dn)) {
@@ -129,6 +150,7 @@
   } else {
     /* ---------------- MAIN SITE ---------------- */
     site.hidden = false;
+    renderAuth();
 
     const form = $("#siteForm");
     form.addEventListener("submit", (e) => {
