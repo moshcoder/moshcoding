@@ -13,6 +13,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.7",
     "express": "^4.19.2"
   },
   "license": "MIT"

@@ -2,36 +2,54 @@ import express from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createClient } from "@libsql/client";
+
+// load ./.env for local dev; a no-op in prod where env is injected
+try { process.loadEnvFile(); } catch { /* no .env file — fine */ }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const CONFIG_DIR = path.join(__dirname, "configs");
-const WAITLIST_FILE = path.join(DATA_DIR, "waitlist.jsonl");
-
-fs.mkdirSync(DATA_DIR, { recursive: true });
 
 /* ------------------------------------------------------------------ *
- * tiny append-only waitlist store (no native deps, Railway-friendly)  *
+ * waitlist store — libSQL / Turso (our regular stack)                 *
  * ------------------------------------------------------------------ */
-const seen = new Set(); // `${dn}\n${email}` dedupe, loaded at boot
-if (fs.existsSync(WAITLIST_FILE)) {
-  for (const line of fs.readFileSync(WAITLIST_FILE, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const { email, dn } = JSON.parse(line);
-      if (email) seen.add(`${dn || ""}\n${email.toLowerCase()}`);
-    } catch { /* skip malformed line */ }
-  }
+if (!process.env.TURSO_DATABASE_URL) {
+  throw new Error("TURSO_DATABASE_URL is not set (see .env.example)");
+}
+const db = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+
+async function initSchema() {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS signups (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      email      TEXT NOT NULL,
+      dn         TEXT NOT NULL DEFAULT 'moshcoding.com',
+      ua         TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(
+    `CREATE UNIQUE INDEX IF NOT EXISTS signups_email_dn ON signups (email, dn)`
+  );
 }
 
-function addSignup({ email, dn, ua }) {
-  const key = `${dn || ""}\n${email.toLowerCase()}`;
-  if (seen.has(key)) return { ok: true, already: true };
-  seen.add(key);
-  const row = { email, dn: dn || null, ts: new Date().toISOString(), ua: (ua || "").slice(0, 300) };
-  fs.appendFileSync(WAITLIST_FILE, JSON.stringify(row) + "\n");
-  return { ok: true, already: false, count: seen.size };
+async function addSignup({ email, dn, ua }) {
+  const domain = dn || "moshcoding.com";
+  const res = await db.execute({
+    sql: `INSERT INTO signups (email, dn, ua) VALUES (?, ?, ?)
+          ON CONFLICT (email, dn) DO NOTHING`,
+    args: [email.toLowerCase(), domain, (ua || "").slice(0, 300)],
+  });
+  return { ok: true, already: res.rowsAffected === 0 };
+}
+
+async function signupCount() {
+  const res = await db.execute(`SELECT count(*) AS n FROM signups`);
+  return Number(res.rows[0]?.n ?? 0);
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -79,7 +97,13 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "16kb" }));
 
-app.get("/healthz", (_req, res) => res.json({ ok: true, count: seen.size }));
+app.get("/healthz", async (_req, res) => {
+  try {
+    res.json({ ok: true, count: await signupCount() });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: "db unreachable" });
+  }
+});
 
 app.get("/api/config", (req, res) => {
   const dn = safeDomain(req.query.dn);
@@ -87,15 +111,20 @@ app.get("/api/config", (req, res) => {
   res.json(configFor(dn));
 });
 
-app.post("/api/waitlist", (req, res) => {
+app.post("/api/waitlist", async (req, res) => {
   const email = String(req.body?.email || "").trim();
   if (!EMAIL_RE.test(email) || email.length > 254) {
     return res.status(400).json({ error: "That doesn't look like an email." });
   }
   const dn = req.body?.dn ? safeDomain(req.body.dn) : null;
   if (req.body?.dn && !dn) return res.status(400).json({ error: "invalid domain" });
-  const result = addSignup({ email, dn: dn || "moshcoding.com", ua: req.get("user-agent") });
-  res.json(result);
+  try {
+    const result = await addSignup({ email, dn: dn || "moshcoding.com", ua: req.get("user-agent") });
+    res.json(result);
+  } catch (err) {
+    console.error("waitlist insert failed:", err.message);
+    res.status(500).json({ error: "Couldn't save that. Try again." });
+  }
 });
 
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
@@ -103,4 +132,11 @@ app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] })
 // everything else falls back to the SPA shell (so /?dn=... always works)
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-app.listen(PORT, () => console.log(`moshcoding listening on :${PORT}  (data → ${DATA_DIR})`));
+initSchema()
+  .then(() => {
+    app.listen(PORT, () => console.log(`moshcoding listening on :${PORT}  (db → Turso)`));
+  })
+  .catch((err) => {
+    console.error("Failed to init Turso schema:", err.message);
+    process.exit(1);
+  });

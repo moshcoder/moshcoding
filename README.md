@@ -56,23 +56,26 @@ moshcoding.com/?dn=yourdomain.com
   domain. Copy/accent auto-derive from the domain name, or drop a
   `configs/<domain>.json` override (`brand`, `headline`, `tagline`, `sub`, `accent`, `cta`).
   Every tenant page carries a **"© 2026 powered by moshcoding.com"** link.
-- **Waitlist** — `POST /api/waitlist { email, dn? }`, stored append-only in
-  `$DATA_DIR/waitlist.jsonl` (deduped per email+domain). No database, no native deps.
+- **Waitlist** — `POST /api/waitlist { email, dn? }`, stored in **libSQL / Turso**
+  (`signups` table, unique per email+domain). `@libsql/client`, no native deps.
 
 ### Run it
 
 ```bash
+cp .env.example .env      # fill in TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
 npm install
-npm start            # http://localhost:8080
-# tenant demo:       http://localhost:8080/?dn=killer-startup.io
+npm start                 # http://localhost:8080
+# tenant demo:            http://localhost:8080/?dn=killer-startup.io
 ```
 
-Env: `PORT` (default 8080) · `DATA_DIR` (default `./data`; point at a mounted volume in prod).
+Env: `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` (required) · `PORT` (default 8080).
+The `signups` table is created automatically on boot.
 
 ### Deploy (Railway)
 
-Nixpacks auto-builds (`railway.json` sets the start command + `/healthz`). For persistent
-signups, mount a volume and set `DATA_DIR` to it (e.g. `/data`). No other config required.
+Nixpacks auto-builds (`railway.json` sets the start command + `/healthz`). Set
+`TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the service variables — no volume needed,
+Turso is the database.
 
 ## Links
 
