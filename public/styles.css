@@ -172,6 +172,28 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .t-tag { font-size: clamp(20px, 3vw, 28px); color: var(--bone); margin: 0 0 8px; }
 .t-sub { color: var(--ash); margin: 0 0 30px; }
 .wform.big input[type=email] { flex-basis: 300px; padding: 17px 18px; font-size: 17px; }
+
+/* linktree-style social list */
+.t-hashtag { font-family: var(--mono); font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tenant-accent, var(--acid)); margin: 34px 0 16px; }
+.links { display: flex; flex-direction: column; gap: 12px; max-width: 460px; margin: 0 auto; width: 100%; }
+.lt {
+  display: flex; align-items: center; gap: 14px;
+  padding: 15px 18px; background: var(--panel); border: 1px solid var(--line);
+  color: var(--bone); font-family: var(--mono); font-size: 15px; letter-spacing: 0.02em;
+  transition: transform .1s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.lt:hover {
+  border-color: var(--tenant-accent, var(--acid));
+  box-shadow: 0 0 24px rgba(158, 240, 26, 0.18);
+  transform: translateY(-2px);
+  background: #14170f;
+}
+.lt-i { flex: 0 0 22px; height: 22px; color: var(--tenant-accent, var(--acid)); display: grid; place-items: center; }
+.lt-i svg { width: 22px; height: 22px; }
+.lt-l { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-go { color: var(--ash); font-size: 13px; }
+.lt:hover .lt-go { color: var(--tenant-accent, var(--acid)); }
+
 .t-foot { font-family: var(--mono); font-size: 12px; color: var(--ash); margin-top: 40px; }
 .t-foot a { color: var(--acid); }
 .t-foot a:hover { text-decoration: underline; }

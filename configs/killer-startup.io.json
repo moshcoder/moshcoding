@@ -4,5 +4,13 @@
   "tagline": "Zero to launch, full distortion.",
   "sub": "Get on the list before the pit opens.",
   "accent": "#1DB954",
-  "cta": "Count me in"
+  "cta": "Count me in",
+  "hashtag": "#killerstartup",
+  "socials": {
+    "website": "https://killer-startup.io",
+    "x": "killerstartup",
+    "instagram": "killerstartup",
+    "github": "killerstartup",
+    "spotify": "https://open.spotify.com/playlist/example"
+  }
 }

@@ -71,6 +71,26 @@ function titleize(dn) {
   return base.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// linktree-style social list: verbatim `links` win, else expand a `socials`
+// shorthand, else derive sensible defaults from the domain name.
+function socialLinks(dn, override = {}) {
+  if (Array.isArray(override.links)) {
+    return override.links.filter((l) => l && l.url && l.label);
+  }
+  const slug = dn.split(".")[0].replace(/[^a-z0-9]/g, "");
+  const s = { website: `https://${dn}`, x: slug, instagram: slug, tiktok: slug, ...(override.socials || {}) };
+  const links = [];
+  if (s.website)   links.push({ label: dn,             url: s.website,                              kind: "web" });
+  if (s.x)         links.push({ label: `@${s.x}`,        url: `https://x.com/${s.x}`,                 kind: "x" });
+  if (s.instagram) links.push({ label: `@${s.instagram}`, url: `https://instagram.com/${s.instagram}`, kind: "instagram" });
+  if (s.tiktok)    links.push({ label: `@${s.tiktok}`,   url: `https://tiktok.com/@${s.tiktok}`,      kind: "tiktok" });
+  if (s.github)    links.push({ label: s.github,         url: `https://github.com/${s.github}`,       kind: "github" });
+  if (s.youtube)   links.push({ label: s.youtube,        url: `https://youtube.com/@${s.youtube}`,    kind: "youtube" });
+  if (s.spotify)   links.push({ label: "Spotify",        url: s.spotify,                              kind: "spotify" });
+  if (s.discord)   links.push({ label: "Discord",        url: s.discord,                              kind: "discord" });
+  return links;
+}
+
 function configFor(dn) {
   const base = {
     dn,
@@ -82,14 +102,20 @@ function configFor(dn) {
     cta: "Join the waitlist",
     spotify: "",
   };
+  let override = {};
   const file = path.join(CONFIG_DIR, `${dn}.json`);
   if (fs.existsSync(file)) {
-    try {
-      const override = JSON.parse(fs.readFileSync(file, "utf8"));
-      return { ...base, ...override, dn };
-    } catch { /* fall through to default */ }
+    try { override = JSON.parse(fs.readFileSync(file, "utf8")); }
+    catch { override = {}; }
   }
-  return base;
+  const slug = dn.split(".")[0].replace(/[^a-z0-9]/g, "");
+  return {
+    ...base,
+    ...override,
+    dn,
+    hashtag: override.hashtag || `#${slug}`,
+    links: socialLinks(dn, override),
+  };
 }
 
 /* ------------------------------------------------------------------ */
