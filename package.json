@@ -2,19 +2,23 @@
   "name": "moshcoding",
   "version": "0.1.0",
   "private": true,
-  "description": "Code hard. Mosh harder. Landing page + one-line metal coming-soon pages with email waitlist.",
-  "type": "module",
-  "main": "server.js",
+  "description": "Code hard. Mosh harder. Next.js + Bun. Landing + one-line metal coming-soon pages with email waitlist and CoinPayPortal login.",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
-  },
-  "engines": {
-    "node": ">=18"
+    "dev": "next dev -p 8080",
+    "build": "next build",
+    "start": "next start -p ${PORT:-8080}",
+    "lint": "next lint"
   },
   "dependencies": {
     "@libsql/client": "^0.15.7",
-    "express": "^4.19.2"
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
-  "license": "MIT"
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
 }

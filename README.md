@@ -44,38 +44,43 @@ Square variants (`*_square.png`) are packaged for social avatars/tiles. Individu
 
 ## The app
 
-A killer `#MOSHCODING` landing page **plus** a one-liner product: point any domain at
-moshcoding and it renders a blacked-out, poison-green coming-soon page with a working
-email waitlist.
+**Next.js (App Router) on Bun.** A killer `#MOSHCODING` landing page **plus** a one-liner
+product: point any domain at moshcoding and it renders a blacked-out, poison-green
+coming-soon page with a working email waitlist.
 
 ```
 moshcoding.com/?dn=yourdomain.com
 ```
 
-- **Tenant mode** — `?dn=<domain>` swaps the site for a focused launch page for that
+- **Tenant mode** — `?dn=<domain>` is server-rendered as a focused launch page for that
   domain. Copy/accent auto-derive from the domain name, or drop a
-  `configs/<domain>.json` override (`brand`, `headline`, `tagline`, `sub`, `accent`, `cta`).
-  Every tenant page carries a **"© 2026 powered by moshcoding.com"** link.
+  `configs/<domain>.json` override (`brand`, `headline`, `tagline`, `sub`, `accent`, `cta`,
+  plus `hashtag` and a linktree via `socials`/`links`). Every tenant page carries a
+  **"© 2026 powered by moshcoding.com"** link.
 - **Waitlist** — `POST /api/waitlist { email, dn? }`, stored in **libSQL / Turso**
-  (`signups` table, unique per email+domain). `@libsql/client`, no native deps.
+  (`signups` table, unique per email+domain) via `@libsql/client`.
+- **Login** — "Log in with CoinPayPortal" (OAuth2 Auth Code + PKCE); email captured to a
+  `users` table. Self-disables until the `COINPAY_*` + `SESSION_SECRET` env vars are set.
+- **www → apex** redirect handled in `middleware.ts` (308 to `https://moshcoding.com`).
 
-### Run it
+### Run it (Bun)
 
 ```bash
-cp .env.example .env      # fill in TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
-npm install
-npm start                 # http://localhost:8080
+cp .env.example .env      # fill in TURSO + COINPAY + SESSION vars
+bun install
+bun run dev               # http://localhost:8080
 # tenant demo:            http://localhost:8080/?dn=killer-startup.io
 ```
 
-Env: `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` (required) · `PORT` (default 8080).
-The `signups` table is created automatically on boot.
+Env: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (required) · `COINPAY_ISSUER`,
+`COINPAY_CLIENT_ID`, `COINPAY_CLIENT_SECRET`, `SESSION_SECRET`, `APP_BASE_URL` (for login) ·
+`PORT` (default 8080). Turso tables are created automatically on first request.
 
 ### Deploy (Railway)
 
-Nixpacks auto-builds (`railway.json` sets the start command + `/healthz`). Set
-`TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the service variables — no volume needed,
-Turso is the database.
+Builds from the **Dockerfile** (`oven/bun` → `bun run build` → `bun run start`);
+`railway.json` sets the start command + `/api/me` health check. Set the env vars above in
+the service variables — no volume needed, Turso is the database.
 
 ## Links
 
