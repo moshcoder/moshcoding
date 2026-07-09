@@ -1,0 +1,154 @@
+#!/usr/bin/env sh
+
+set -eu
+
+MAX_SECONDS=29.9
+MAX_WIDE=1280
+MAX_TALL=720
+CRF=23
+AUDIO_BITRATE=128k
+VIDEO_MAXRATE=2500k
+VIDEO_BUFSIZE=5000k
+
+need() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+is_video_file() {
+  case "$1" in
+    *.mp4|*.MP4|*.m4v|*.M4V|*.mov|*.MOV|*.webm|*.WEBM|*.mkv|*.MKV|*.avi|*.AVI)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+make_web_mp4() {
+  src=$1
+
+  if [ ! -f "$src" ]; then
+    echo "Skipping, not a file: $src"
+    return 0
+  fi
+
+  if ! is_video_file "$src"; then
+    echo "Skipping, not a supported video: $src"
+    return 0
+  fi
+
+  case "$src" in
+    *_under-30s.mp4|*_under-30s.MP4)
+      echo "Skipping existing under-30s file: $src"
+      return 0
+      ;;
+  esac
+
+  dir=${src%/*}
+  if [ "$dir" = "$src" ]; then
+    dir=.
+  fi
+
+  file=${src##*/}
+  base=${file%.*}
+  out="${dir}/${base}_under-30s.mp4"
+  tmp="${out}.tmp.mp4"
+
+  rm -f "$tmp"
+
+  vf="fps=30,scale='if(gte(iw,ih),min(${MAX_WIDE},iw),min(${MAX_TALL},iw))':'if(gte(iw,ih),min(${MAX_TALL},ih),min(${MAX_WIDE},ih))':force_original_aspect_ratio=decrease,scale='trunc(iw/2)*2':'trunc(ih/2)*2',setsar=1,format=yuv420p"
+
+  ffmpeg -nostdin -hide_banner -loglevel error -y \
+    -i "$src" \
+    -t "$MAX_SECONDS" \
+    -map '0:v:0' -map '0:a:0?' \
+    -vf "$vf" \
+    -c:v libx264 \
+    -preset medium \
+    -crf "$CRF" \
+    -profile:v baseline \
+    -level 3.1 \
+    -maxrate "$VIDEO_MAXRATE" \
+    -bufsize "$VIDEO_BUFSIZE" \
+    -g 60 \
+    -keyint_min 60 \
+    -sc_threshold 0 \
+    -tag:v avc1 \
+    -c:a aac \
+    -profile:a aac_low \
+    -b:a "$AUDIO_BITRATE" \
+    -ar 48000 \
+    -ac 2 \
+    -movflags +faststart \
+    "$tmp"
+
+  mv "$tmp" "$out"
+
+  size=$(wc -c < "$out" | tr -d ' ')
+  echo "$src -> $out ($size bytes)"
+}
+
+process_dir() {
+  dir=$1
+
+  find "$dir" -maxdepth 1 -type f ! -iname '*_under-30s.mp4' \
+    \( -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.avi' \) \
+    -print |
+  while IFS= read -r f; do
+    make_web_mp4 "$f"
+  done
+}
+
+process_glob() {
+  pattern=$1
+
+  dir=${pattern%/*}
+  name=${pattern##*/}
+
+  if [ "$dir" = "$pattern" ]; then
+    dir=.
+    name=$pattern
+  fi
+
+  if [ ! -d "$dir" ]; then
+    echo "Skipping, directory does not exist: $dir"
+    return 0
+  fi
+
+  find "$dir" -maxdepth 1 -type f -iname "$name" ! -iname '*_under-30s.mp4' -print |
+  while IFS= read -r f; do
+    make_web_mp4 "$f"
+  done
+}
+
+need ffmpeg
+
+if ! ffmpeg -hide_banner -loglevel quiet -encoders | grep -q 'libx264'; then
+  echo "Your ffmpeg is missing libx264. Install a full ffmpeg build, then run this again." >&2
+  exit 1
+fi
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: $0 <video file | directory | wildcard> [...]"
+  echo "Example: $0 \"$HOME/Desktop/videos/*.mp4\""
+  exit 1
+fi
+
+for input in "$@"; do
+  if [ -d "$input" ]; then
+    process_dir "$input"
+  else
+    case "$input" in
+      *'*'*|*'?'*|*'['*)
+        process_glob "$input"
+        ;;
+      *)
+        make_web_mp4 "$input"
+        ;;
+    esac
+  fi
+done

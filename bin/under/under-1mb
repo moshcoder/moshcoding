@@ -1,0 +1,100 @@
+#!/usr/bin/env sh
+
+set -eu
+
+MAX_BYTES=1048576
+
+size_of() {
+  wc -c < "$1" | tr -d ' '
+}
+
+make_thumb() {
+  src=$1
+
+  if [ ! -f "$src" ]; then
+    echo "Skipping, not a file: $src"
+    return 0
+  fi
+
+  case "$src" in
+    *.png|*.PNG)
+      ;;
+    *)
+      echo "Skipping, not a PNG: $src"
+      return 0
+      ;;
+  esac
+
+  case "$src" in
+    *_thumb.png|*_thumb.PNG)
+      echo "Skipping existing thumb: $src"
+      return 0
+      ;;
+  esac
+
+  dir=${src%/*}
+  if [ "$dir" = "$src" ]; then
+    dir=.
+  fi
+
+  file=${src##*/}
+  base=${file%.*}
+  out="${dir}/${base}_thumb.png"
+
+  scale=100
+
+  magick "$src" \
+    -strip \
+    -define png:compression-level=9 \
+    -define png:compression-filter=5 \
+    "$out"
+
+  size=$(size_of "$out")
+
+  while [ "$size" -gt "$MAX_BYTES" ] && [ "$scale" -gt 1 ]; do
+    scale=$((scale - 5))
+
+    if [ "$scale" -lt 1 ]; then
+      scale=1
+    fi
+
+    magick "$src" \
+      -strip \
+      -resize "${scale}%" \
+      -colors 256 \
+      -define png:compression-level=9 \
+      -define png:compression-filter=5 \
+      "$out"
+
+    size=$(size_of "$out")
+  done
+
+  if [ "$size" -gt "$MAX_BYTES" ]; then
+    echo "WARNING: still over 1MB: $out ($size bytes)"
+  else
+    echo "$src -> $out ($size bytes)"
+  fi
+}
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: $0 <png file | directory | wildcard> [...]"
+  exit 1
+fi
+
+for input in "$@"; do
+  if [ -d "$input" ]; then
+    found=0
+
+    for f in "$input"/*.png "$input"/*.PNG; do
+      [ -f "$f" ] || continue
+      found=1
+      make_thumb "$f"
+    done
+
+    if [ "$found" -eq 0 ]; then
+      echo "No PNGs found in directory: $input"
+    fi
+  else
+    make_thumb "$input"
+  fi
+done
