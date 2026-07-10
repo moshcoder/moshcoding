@@ -87,6 +87,14 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           </nav>
         )}
 
+        {cfg.videos.length > 0 && (
+          <div id="videos" className="t-videos" aria-label="Videos">
+            {cfg.videos.map((v, i) => (
+              <video key={i} className="t-video" controls preload="metadata" playsInline src={v.url} />
+            ))}
+          </div>
+        )}
+
         {cfg.assets.length > 0 && (
           <div className="t-assets" aria-label="Assets">
             {cfg.assets.map((a, i) => (

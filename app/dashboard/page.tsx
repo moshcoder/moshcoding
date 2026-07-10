@@ -205,6 +205,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [repo, setRepo] = useState("");
   const [assetPattern, setAssetPattern] = useState("");
   const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
+  const [videos, setVideos] = useState<{ name: string; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [blocks, setBlocks] = useState<BlockRow[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -213,6 +215,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     setRepo(c.repo || "");
     setAssetPattern(c.assetPattern || "");
     setAssets(c.assets || []);
+    setVideos(Array.isArray(c.videos) ? c.videos : []);
     setBlocks(Array.isArray(c.blocks) ? c.blocks : []);
     setSocials(c.socials || {});
     setLinks(c.customLinks || []);
@@ -296,6 +299,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
             bgRgba: bgRgba.trim(),
             repo: repo.trim(),
             assetPattern: assetPattern.trim(),
+            videos,
             blocks: blocks.map((b) => ({ ...b, content: b.content })),
             ...text,
           },
@@ -316,6 +320,31 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
       onOk("Payout wallet saved.");
     } catch (e: any) { onError(e.message || "Couldn't save."); }
+  };
+
+  const uploadVideo = async (file: File | undefined) => {
+    if (!file || !activeDomain) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`/api/upload?dn=${encodeURIComponent(activeDomain)}`, { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setVideos(d.videos || []);
+      onOk("Video uploaded & published. 🤘");
+    } catch (e: any) { onError(e.message || "Upload failed."); }
+    finally { setUploading(false); }
+  };
+  const deleteVideo = async (url: string) => {
+    if (!activeDomain) return;
+    try {
+      const r = await fetch(`/api/upload?dn=${encodeURIComponent(activeDomain)}&url=${encodeURIComponent(url)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setVideos(d.videos || []);
+      onOk("Video removed.");
+    } catch (e: any) { onError(e.message || "Couldn't remove."); }
   };
 
   const pageUrl = activeDomain ? `/?dn=${encodeURIComponent(activeDomain)}` : null;
@@ -391,6 +420,21 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <input className="inp" placeholder="foreground (fg_rgba)" value={fgRgba} onChange={(e) => setFgRgba(e.target.value)} />
         <input className="inp" placeholder="background (bg_rgba)" value={bgRgba} onChange={(e) => setBgRgba(e.target.value)} />
       </div>
+
+      <h3 className="ed-h">Videos <span className="muted">(upload MP4s → shown in the #videos section, 100 MB max)</span></h3>
+      <div className="row">
+        <input className="inp" type="file" accept="video/mp4,.mp4" disabled={uploading} onChange={(e) => { uploadVideo(e.target.files?.[0]); e.target.value = ""; }} />
+        {uploading && <span className="muted">Uploading…</span>}
+      </div>
+      <ul className="list">
+        {videos.length === 0 && <li className="muted">No videos yet.</li>}
+        {videos.map((v) => (
+          <li key={v.url}>
+            <span><a href={v.url} target="_blank" rel="noopener noreferrer">{v.name}</a></span>
+            <button className="btn2 ghost" onClick={() => deleteVideo(v.url)}>Delete</button>
+          </li>
+        ))}
+      </ul>
 
       <h3 className="ed-h">GitHub assets <span className="muted">(pull images from a repo onto your page)</span></h3>
       <div className="row"><input className="inp" placeholder="owner/repo — e.g. moshcoder/moshcoding" value={repo} onChange={(e) => setRepo(e.target.value)} /></div>
