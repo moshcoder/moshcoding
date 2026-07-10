@@ -13,6 +13,9 @@ RUN bun run build
 FROM oven/bun:1 AS run
 WORKDIR /app
 ENV NODE_ENV=production
+# ffmpeg generates poster thumbnails for uploaded reels (lib/media.ts).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app ./
 EXPOSE 8080
 CMD ["bun", "run", "start"]

@@ -3,12 +3,12 @@ import { randomBytes } from "node:crypto";
 import { resolveAccountId, bad, unauthorized } from "@/lib/api";
 import { accountOwnsDomain, addMedia, listMedia, type Media } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
-import { writeMedia, ALLOWED_TYPES, MAX_UPLOAD_BYTES } from "@/lib/media";
+import { writeMedia, generateThumbnail, hasThumb, ALLOWED_TYPES, MAX_UPLOAD_BYTES } from "@/lib/media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Public view of a reel — the streaming URL + safe metadata. */
+/** Public view of a reel — the streaming URL, poster thumbnail + safe metadata. */
 function mediaView(m: Media) {
   return {
     id: m.id,
@@ -18,6 +18,7 @@ function mediaView(m: Media) {
     size: m.size,
     created_at: m.created_at,
     url: `/api/media/${m.id}`,
+    thumb: hasThumb(m.filename) ? `/api/media/${m.id}/thumb` : null,
   };
 }
 
@@ -57,6 +58,8 @@ export async function POST(req: NextRequest) {
   const id = randomBytes(16).toString("hex");
   const filename = `${id}${ext}`;
   await writeMedia(filename, bytes);
+  // Best-effort poster frame — never fail the upload if ffmpeg is unavailable.
+  try { await generateThumbnail(filename); } catch { /* no poster, no problem */ }
 
   const title = String(form.get("title") || "").trim().slice(0, 120) || file.name;
   const media = await addMedia({

@@ -4,6 +4,7 @@
 // Mount a volume at DATA_DIR in production or uploads won't survive a redeploy.
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const MEDIA_DIR = path.join(DATA_DIR, "media");
@@ -52,4 +53,48 @@ export function deleteMediaFile(filename: string): void {
   } catch {
     /* already gone — fine */
   }
+}
+
+// ---- poster thumbnails (ffmpeg) -------------------------------------------
+
+/** The thumbnail name for a video file: `<name>.mp4` → `<name>_thumb.png`. */
+export function thumbFilename(videoFilename: string): string {
+  const base = path.basename(videoFilename).replace(/\.[^.]+$/, "");
+  return `${base}_thumb.png`;
+}
+
+/** True once a poster thumbnail exists on disk for this video. */
+export function hasThumb(videoFilename: string): boolean {
+  return mediaSize(thumbFilename(videoFilename)) != null;
+}
+
+function runFfmpeg(args: string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    let proc;
+    try {
+      proc = spawn(process.env.FFMPEG_PATH || "ffmpeg", args, { stdio: "ignore" });
+    } catch {
+      resolve(false);
+      return;
+    }
+    proc.on("error", () => resolve(false));
+    proc.on("close", (code) => resolve(code === 0));
+  });
+}
+
+/**
+ * Extracts a poster frame from an uploaded video into `<name>_thumb.png`
+ * (640px wide, aspect preserved) using ffmpeg. Best-effort: returns false if
+ * ffmpeg is missing or the clip can't be decoded — the caller must not fail the
+ * upload on a false. Grabs a frame ~1s in, falling back to the first frame for
+ * very short clips.
+ */
+export async function generateThumbnail(videoFilename: string): Promise<boolean> {
+  ensureDir();
+  const input = mediaPath(videoFilename);
+  const output = mediaPath(thumbFilename(videoFilename));
+  const frameAt = (t: string) =>
+    ["-y", "-ss", t, "-i", input, "-frames:v", "1", "-vf", "scale=640:-2", output];
+  if ((await runFfmpeg(frameAt("1"))) && fs.existsSync(output)) return true;
+  return (await runFfmpeg(frameAt("0"))) && fs.existsSync(output);
 }
