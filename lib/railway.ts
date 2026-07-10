@@ -17,9 +17,15 @@ export function railwayConfigured(): boolean {
 async function gql<T = any>(query: string, variables: Record<string, any> = {}): Promise<T> {
   const token = process.env.RAILWAY_API_TOKEN;
   if (!token) throw new Error("RAILWAY_API_TOKEN is not set.");
+  // Project tokens (UUID) authenticate with the Project-Access-Token header;
+  // team/personal tokens use Authorization: Bearer.
+  const isProjectToken = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token);
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (isProjectToken) headers["Project-Access-Token"] = token;
+  else headers["authorization"] = `Bearer ${token}`;
   const res = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    headers,
     body: JSON.stringify({ query, variables }),
   });
   const json = await res.json().catch(() => ({}));
