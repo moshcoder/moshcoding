@@ -17,7 +17,8 @@ export default function SharePost({ cfg }: { cfg: TenantConfig }) {
       "";
     const parts = [`${cfg.brand} ${cfg.headline} — join the waitlist 🤘`, tags, handle].filter(Boolean);
     const text = parts.join(" ");
-    const url = typeof window !== "undefined" ? window.location.href : `https://moshcoding.com/?dn=${cfg.dn}`;
+    // Drive people to the tenant's own (parked) domain, not the moshcoding URL.
+    const url = `https://${cfg.dn}`;
     return { text, url, shareText: `${text} ${url}` };
   }, [cfg]);
 
