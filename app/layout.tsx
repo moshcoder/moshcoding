@@ -9,11 +9,10 @@ export const metadata: Metadata = {
   openGraph: {
     title: "#MOSHCODING — Code hard. Mosh harder.",
     description: "A Spotify playlist for developers who code hard and mosh harder.",
-    images: ["/assets/mascot-hero.png"],
+    images: ["/assets/avatar.png"],
   },
-  icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💀</text></svg>",
-  },
+  // Favicon + apple-touch icon come from app/icon.png and app/apple-icon.png
+  // (Next file convention) — the square skeleton-coder brand avatar.
 };
 
 export const viewport: Viewport = {

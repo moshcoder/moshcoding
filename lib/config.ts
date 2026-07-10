@@ -16,9 +16,23 @@ export type TenantConfig = {
   links: TenantLink[];
   /** Affiliate/sponsor links (?aff_link1=…), rendered under a "Sponsors" heading. */
   sponsors: TenantLink[];
+  /** Bare hashtag keywords (rendered as #<kw>). Defaults to the domain slug. */
+  hashtags: string[];
   /** Genres from ?style=metal,punk — drives the AI hero-image generation. */
   styles: string[];
+  /** Optional background accent (rgba) from ?bg_rgba=; null = use the theme default. */
+  bgAccent: string | null;
 };
+
+/** Default moshcoding accent (poison lime). Used unless an rgba override is given. */
+export const DEFAULT_ACCENT = "#9EF01A";
+
+/** Accepts only an rgb()/rgba() color string; returns it trimmed, or null. */
+export function validRgba(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(?:0|1|0?\.\d+)\s*)?\)$/i.test(s) ? s : null;
+}
 
 export function safeDomain(dn: unknown): string | null {
   if (typeof dn !== "string") return null;
@@ -115,6 +129,20 @@ export function parseStyles(v: unknown): string[] {
     .filter((s) => /^[a-z-]{2,20}$/.test(s)).slice(0, 4);
 }
 
+/**
+ * Parses ?hashtags=metal,coding,pit — bare keywords (any leading # or non-word
+ * chars stripped); the UI renders each as #<keyword>. Deduped, max 8.
+ */
+export function parseHashtags(v: unknown): string[] {
+  if (typeof v !== "string") return [];
+  const out: string[] = [];
+  for (const raw of v.split(",")) {
+    const k = raw.trim().replace(/^#+/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (k && !out.includes(k)) out.push(k);
+  }
+  return out.slice(0, 8);
+}
+
 /** Per-request overrides threaded from the query string (see app/page.tsx). */
 export type TenantOverrides = {
   /** Social handle applied across X / Instagram / TikTok (with or without @). */
@@ -129,6 +157,12 @@ export type TenantOverrides = {
   linkParams?: Record<string, string | undefined | null>;
   /** Raw ?aff_link1=&aff_link2=… affiliate/sponsor link params. */
   affParams?: Record<string, string | undefined | null>;
+  /** Raw ?hashtags=metal,coding value (bare keywords). */
+  hashtags?: string | null;
+  /** ?fg_rgba= (or ?rgba=) foreground accent, rgba() only; else default green. */
+  fgRgba?: string | null;
+  /** ?bg_rgba= background accent, rgba() only. */
+  bgRgba?: string | null;
   /** Override loaded from the DB tenants table for a provisioned (paid) domain. */
   tenantOverride?: Record<string, any> | null;
 };
@@ -211,6 +245,14 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     const fbUrl = fallbackUrl(fbRaw);
     if (fbUrl) {
       override = { ...override, website: fbUrl };
+      // Also use the fallback domain's name as the generic social handle
+      // (platforms `socials` didn't set), so one ?fallback= brands links + socials.
+      let host = "";
+      try { host = new URL(fbUrl).hostname.replace(/^www\./, ""); } catch { host = ""; }
+      const fbName = host.split(".")[0].replace(/[^a-z0-9]/g, "");
+      if (fbName) {
+        override = { ...override, socials: { x: fbName, instagram: fbName, tiktok: fbName, ...(override.socials || {}) } };
+      }
     } else {
       const fbh = handle(fbRaw);
       if (fbh) {
@@ -236,6 +278,10 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   const slug = dn.split(".")[0].replace(/[^a-z0-9]/g, "");
   // Socials/website first, then any custom ?link_N= links (our apps etc.).
   const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams)];
+  // Hashtags: explicit ?hashtags= keywords, else a single domain-slug hashtag
+  // (same slug the socials derive from). Special chars already stripped.
+  const parsedTags = parseHashtags(opts.hashtags);
+  const hashtags = parsedTags.length ? parsedTags : (slug ? [slug] : []);
   return {
     ...base,
     ...override,
@@ -243,6 +289,12 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     hashtag: override.hashtag || (sh ? `#${sh}` : `#${slug}`),
     links,
     sponsors: parseSponsors(opts.affParams),
+    hashtags,
     styles: parseStyles(opts.style),
+    // Accent always falls back to the default moshcoding green; a tenant only
+    // overrides it with an explicit rgba() via ?fg_rgba= (config hex accents are
+    // intentionally ignored so pages don't drift off-brand). ?bg_rgba= tints bg.
+    accent: validRgba(opts.fgRgba) || DEFAULT_ACCENT,
+    bgAccent: validRgba(opts.bgRgba),
   };
 }

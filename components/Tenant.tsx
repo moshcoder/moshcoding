@@ -1,9 +1,13 @@
 import type { TenantConfig } from "@/lib/config";
 import WaitlistForm from "./WaitlistForm";
+import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
 
 export default function Tenant({ cfg }: { cfg: TenantConfig }) {
-  const accentStyle = { ["--tenant-accent" as any]: cfg.accent } as React.CSSProperties;
+  const accentStyle = {
+    ["--tenant-accent" as any]: cfg.accent,
+    ...(cfg.bgAccent ? { ["--tenant-bg-accent" as any]: cfg.bgAccent } : {}),
+  } as React.CSSProperties;
   return (
     <div className="tenant" style={accentStyle}>
       <div className="tenant-wrap">
@@ -25,7 +29,11 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
 
         <WaitlistForm dn={cfg.dn} cta={cfg.cta} big />
 
-        {cfg.hashtag ? <p className="t-hashtag">{cfg.hashtag}</p> : null}
+        {cfg.hashtags.length > 0 ? (
+          <p className="t-hashtag">{cfg.hashtags.map((h) => `#${h}`).join(" ")}</p>
+        ) : cfg.hashtag ? <p className="t-hashtag">{cfg.hashtag}</p> : null}
+
+        <SharePost cfg={cfg} />
         {cfg.links.length > 0 && (
           <nav className="links" aria-label="Social links">
             {cfg.links.map((l, i) => {
