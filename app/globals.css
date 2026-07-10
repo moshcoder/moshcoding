@@ -300,6 +300,9 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .qhelp-ex-list a:hover { text-decoration: underline; }
 @media (max-width: 520px) { .qhelp-row { grid-template-columns: 1fr; gap: 3px; } }
 
+/* CrawlProof ad unit — centered above the footer */
+.ad-unit { display: flex; justify-content: center; margin: 32px auto; min-height: 250px; max-width: 100%; }
+
 /* Dashboard editor section headings */
 .ed-h { margin: 18px 0 8px; font-size: 13px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; color: #cfcfcf; }
 .ed-h .muted { text-transform: none; letter-spacing: 0; }

@@ -2,6 +2,7 @@ import Nav from "./Nav";
 import SummonDemo from "./SummonDemo";
 import WaitlistForm from "./WaitlistForm";
 import QueryHelp from "./QueryHelp";
+import AdUnit from "./AdUnit";
 
 const TICKER = ["BUILD. BREAK. REPEAT.", "NO BUGS, JUST FEATURES", "DEADLINES ARE FOR THE WEAK", "PUSH CODE, START PITS"];
 
@@ -62,6 +63,8 @@ export default function Landing() {
         <p className="lede">Drop your email. We&apos;ll hit you when the playlist and the merch drop.</p>
         <WaitlistForm />
       </section>
+
+      <AdUnit slot="fd4ff2e8-db11-438f-8151-3054aa5e1e4c" />
 
       <footer className="foot">
         <a className="wm sm" href="/">#MOSHCODING</a>
