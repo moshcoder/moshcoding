@@ -32,12 +32,12 @@ export async function POST(req: NextRequest) {
     if (result.token && isEmailConfigured()) {
       const sent = await sendWaitlistVerification({ email, token: result.token });
       if (!sent.ok) {
-        console.error("waitlist verification email failed:", sent.error);
-        // The signup is saved but unconfirmed — surface a retryable error.
-        return NextResponse.json(
-          { error: "Saved you, but the confirmation email didn't go out. Try again shortly." },
-          { status: 502 }
-        );
+        // Never block a signup because email is misconfigured (bad key, unverified
+        // domain, Resend down). Save them and auto-confirm; log loudly so the
+        // real problem is visible in the deploy logs.
+        console.error("waitlist verification email failed — auto-confirming instead:", sent.error);
+        if (result.token) await verifySignup(result.token);
+        return NextResponse.json({ ok: true, already: result.already, pending: false, emailFailed: true });
       }
       return NextResponse.json({ ok: true, already: result.already, pending: true });
     }
