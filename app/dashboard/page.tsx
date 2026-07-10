@@ -59,7 +59,7 @@ export default function Dashboard() {
         <p className="sub">Sign in to manage your page, socials &amp; payout wallet.</p>
         <div className="row">
           <a className="btn2" href="/login">Log in</a>
-          <a className="btn2 ghost" href="/signup">Claim your page — $1</a>
+          <a className="btn2 ghost" href="/signup">Claim your page — free</a>
         </div>
       </div>
     );
@@ -256,7 +256,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
 
       {acct.status === "pending" && (
         <p className="dash-msg err" style={{ marginTop: 0 }}>
-          Your $1 setup isn't complete — edits save but won't publish until it clears.{" "}
+          Your account isn't active yet.{" "}
           {acct.payUrl ? <a href={acct.payUrl}>Finish checkout →</a> : null}
         </p>
       )}
@@ -419,7 +419,7 @@ function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk
         <button className="btn2" disabled={busy} onClick={() => post({}, "You're an affiliate. 🤘")}>
           {busy ? "…" : "Become an 80% affiliate"}
         </button>
-        <p className="sub" style={{ marginTop: 8 }}>Requires a claimed page. <a href="/signup">Claim yours — $1</a>.</p>
+        <p className="sub" style={{ marginTop: 8 }}>Requires a claimed page. <a href="/signup">Claim yours — free</a>.</p>
       </section>
     );
   }

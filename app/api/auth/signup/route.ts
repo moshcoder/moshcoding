@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hashPassword, passwordProblem } from "@/lib/password";
-import { createAccount, getAccountByEmail, setAccountPayment, activateAccount, isAdminEmail } from "@/lib/db";
+import { createAccount, getAccountByEmail, activateAccount } from "@/lib/db";
 import { safeDomain, normalizeHandle } from "@/lib/config";
 import { authConfigured, signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
-import { payConfigured, createSetupPayment } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
-import { APP_BASE_URL } from "@/lib/oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,33 +77,7 @@ export async function POST(req: NextRequest) {
     return res;
   };
 
-  // Admins never pay — activate + provision immediately.
-  if (isAdminEmail(email)) {
-    const active = await activateAccount({ accountId: account.id });
-    if (active) await provisionTenant(active);
-    return setCookie(NextResponse.json({ ok: true, pending: false, activated: true, admin: true, redirect: "/dashboard" }));
-  }
-
-  // Charge the $1 setup fee via CoinPay, then provision on webhook confirmation.
-  if (payConfigured()) {
-    try {
-      const payment = await createSetupPayment({
-        accountId: account.id, email, domain,
-        redirectUrl: `${APP_BASE_URL}/dashboard?welcome=1`,
-      });
-      await setAccountPayment(account.id, payment.id);
-      return setCookie(NextResponse.json({ ok: true, pending: true, payUrl: payment.payUrl }));
-    } catch (err: any) {
-      console.error("signup: coinpay payment failed:", err?.message);
-      return setCookie(NextResponse.json(
-        { error: "Account created, but starting the $1 checkout failed. Retry from your dashboard.", pending: true, payFailed: true },
-        { status: 502 },
-      ));
-    }
-  }
-
-  // No payment configured (local dev / not yet provisioned): activate + provision
-  // immediately so the flow is testable end to end.
+  // Getting started is FREE — activate + provision immediately, no charge.
   const active = await activateAccount({ accountId: account.id });
   if (active) await provisionTenant(active);
   return setCookie(NextResponse.json({ ok: true, pending: false, activated: true, redirect: "/dashboard" }));

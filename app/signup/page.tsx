@@ -34,7 +34,6 @@ export default function SignupPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Signup failed.");
-      if (data.payUrl) { setMsg({ t: "Redirecting to your $1 checkout…", ok: true }); window.location.href = data.payUrl; return; }
       setMsg({ t: "You're in — setting up your page. 🤘", ok: true });
       window.location.href = data.redirect || "/dashboard";
     } catch (err: any) {
@@ -46,7 +45,7 @@ export default function SignupPage() {
   return (
     <div className="dash">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <div><h1>Claim your page</h1><p className="sub">One-time <b>$1</b> via CoinPay sets up your linktree at moshcoding.com/?dn=your-domain.</p></div>
+        <div><h1>Claim your page</h1><p className="sub"><b>Free</b> — set up your linktree at moshcoding.com/?dn=your-domain in seconds.</p></div>
         <a className="btn2 ghost" href="/">← home</a>
       </div>
 
@@ -72,7 +71,7 @@ export default function SignupPage() {
         <div className="row"><input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} /></div>
 
         <div className="row" style={{ marginTop: 16 }}>
-          <button className="btn2" type="submit" disabled={busy}>{busy ? "Summoning…" : "Set it up — $1"}</button>
+          <button className="btn2" type="submit" disabled={busy}>{busy ? "Summoning…" : "Claim my page — free"}</button>
           <a className="btn2 ghost" href="/login">I already have an account</a>
         </div>
       </form>

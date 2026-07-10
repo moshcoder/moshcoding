@@ -49,7 +49,7 @@ export default function LoginPage() {
           <button className="btn2" type="submit" disabled={busy}>{busy ? "…" : "Log in"}</button>
           <a className="btn2 ghost" href="/reset">Forgot password?</a>
         </div>
-        <p className="sub" style={{ marginTop: 12 }}>No account? <a href="/signup">Claim your page — $1</a></p>
+        <p className="sub" style={{ marginTop: 12 }}>No account? <a href="/signup">Claim your page — free</a></p>
         {coinpay && (
           <>
             <p className="sub" style={{ marginTop: 12 }}>— or —</p>
