@@ -230,6 +230,35 @@ async function initSchema(): Promise<void> {
     )
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_parked_account ON parked_domains (account_id)`);
+
+  // ---- domain auctions: one per domain, runs FOREVER (no expiry) — the owner
+  // collects bids until they accept one. Owner sets an optional reserve (hidden
+  // from bidders) and buy-now (a bid >= buy_now auto-wins). Managed on /dashboard.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS auctions (
+      domain          TEXT PRIMARY KEY,
+      account_id      TEXT,
+      reserve_cents   INTEGER,
+      buy_now_cents   INTEGER,
+      status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+      accepted_bid_id TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS bids (
+      id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      domain       TEXT NOT NULL,
+      bidder_email TEXT NOT NULL,
+      bidder_sub   TEXT,
+      amount_cents INTEGER NOT NULL,
+      message      TEXT,
+      status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','accepted','rejected')),
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_bids_domain ON bids (domain, amount_cents DESC)`);
 }
 
 /** Adds ADD COLUMN, ignoring the error when the column already exists. */
@@ -500,6 +529,159 @@ export async function ownsParkedDomain(accountId: string, domain: string): Promi
     args: [accountId, domain.trim().toLowerCase()],
   });
   return res.rows.length > 0;
+}
+
+// ---- domain auctions / bids ----------------------------------------------
+export type Auction = {
+  domain: string;
+  account_id: string | null;
+  reserve_cents: number | null;
+  buy_now_cents: number | null;
+  status: "open" | "closed";
+  accepted_bid_id: string | null;
+};
+export type Bid = {
+  id: string;
+  domain: string;
+  bidder_email: string;
+  bidder_sub: string | null;
+  amount_cents: number;
+  message: string | null;
+  status: "active" | "accepted" | "rejected";
+  created_at: string;
+};
+
+const rowToAuction = (r: any): Auction => ({
+  domain: String(r.domain),
+  account_id: r.account_id ? String(r.account_id) : null,
+  reserve_cents: r.reserve_cents == null ? null : Number(r.reserve_cents),
+  buy_now_cents: r.buy_now_cents == null ? null : Number(r.buy_now_cents),
+  status: r.status === "closed" ? "closed" : "open",
+  accepted_bid_id: r.accepted_bid_id ? String(r.accepted_bid_id) : null,
+});
+const rowToBid = (r: any): Bid => ({
+  id: String(r.id),
+  domain: String(r.domain),
+  bidder_email: String(r.bidder_email),
+  bidder_sub: r.bidder_sub ? String(r.bidder_sub) : null,
+  amount_cents: Number(r.amount_cents || 0),
+  message: r.message ? String(r.message) : null,
+  status: r.status,
+  created_at: String(r.created_at),
+});
+
+export async function getAuction(dn: string): Promise<Auction | null> {
+  await ensureSchema();
+  const r = await db().execute({ sql: `SELECT * FROM auctions WHERE domain = ?`, args: [dn.toLowerCase()] });
+  return r.rows[0] ? rowToAuction(r.rows[0]) : null;
+}
+
+/** The single highest still-standing bid (ignores rejected). */
+export async function highBid(dn: string): Promise<Bid | null> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `SELECT * FROM bids WHERE domain = ? AND status != 'rejected' ORDER BY amount_cents DESC, created_at ASC LIMIT 1`,
+    args: [dn.toLowerCase()],
+  });
+  return r.rows[0] ? rowToBid(r.rows[0]) : null;
+}
+
+export async function listBids(dn: string): Promise<Bid[]> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `SELECT * FROM bids WHERE domain = ? ORDER BY amount_cents DESC, created_at ASC`,
+    args: [dn.toLowerCase()],
+  });
+  return r.rows.map(rowToBid);
+}
+
+/** Owner sets/updates reserve + buy-now (claims the auction). Upserts the row. */
+export async function upsertAuction(opts: {
+  dn: string;
+  accountId: string | null;
+  reserveCents: number | null;
+  buyNowCents: number | null;
+}): Promise<Auction> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `INSERT INTO auctions (domain, account_id, reserve_cents, buy_now_cents, updated_at)
+          VALUES (?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(domain) DO UPDATE SET
+            account_id    = COALESCE(excluded.account_id, auctions.account_id),
+            reserve_cents = excluded.reserve_cents,
+            buy_now_cents = excluded.buy_now_cents,
+            updated_at    = datetime('now')
+          RETURNING *`,
+    args: [opts.dn.toLowerCase(), opts.accountId, opts.reserveCents, opts.buyNowCents],
+  });
+  return rowToAuction(r.rows[0]);
+}
+
+/** Accepts one bid, rejects the rest, and closes the auction. */
+export async function acceptBid(dn: string, bidId: string): Promise<boolean> {
+  await ensureSchema();
+  const d = db();
+  const upd = await d.execute({
+    sql: `UPDATE bids SET status = 'accepted' WHERE id = ? AND domain = ?`,
+    args: [bidId, dn.toLowerCase()],
+  });
+  if (!upd.rowsAffected) return false;
+  await d.execute({
+    sql: `UPDATE bids SET status = 'rejected' WHERE domain = ? AND id != ? AND status != 'accepted'`,
+    args: [dn.toLowerCase(), bidId],
+  });
+  await d.execute({
+    sql: `UPDATE auctions SET status = 'closed', accepted_bid_id = ?, updated_at = datetime('now') WHERE domain = ?`,
+    args: [bidId, dn.toLowerCase()],
+  });
+  return true;
+}
+
+/**
+ * Places a bid. Lazily opens an auction row for the domain if none exists, so
+ * every parked domain can collect offers by default. If the bid meets the
+ * owner's buy-now, it auto-wins and the auction closes.
+ */
+export async function addBid(opts: {
+  dn: string;
+  email: string;
+  amountCents: number;
+  message?: string | null;
+  sub?: string | null;
+}): Promise<{ bid: Bid; won: boolean }> {
+  await ensureSchema();
+  const dn = opts.dn.toLowerCase();
+  const d = db();
+  await d.execute({ sql: `INSERT INTO auctions (domain) VALUES (?) ON CONFLICT(domain) DO NOTHING`, args: [dn] });
+  const auction = await getAuction(dn);
+  if (auction?.status === "closed") throw new Error("This auction is closed.");
+  const ins = await d.execute({
+    sql: `INSERT INTO bids (domain, bidder_email, bidder_sub, amount_cents, message) VALUES (?, ?, ?, ?, ?) RETURNING *`,
+    args: [dn, opts.email.toLowerCase(), opts.sub ?? null, opts.amountCents, opts.message ?? null],
+  });
+  const bid = rowToBid(ins.rows[0]);
+  let won = false;
+  if (auction?.buy_now_cents != null && opts.amountCents >= auction.buy_now_cents) {
+    await acceptBid(dn, bid.id);
+    won = true;
+  }
+  return { bid, won };
+}
+
+/** Owner check for auction management: parked/account/tenant ownership, or admin. */
+export async function accountOwnsDomain(accountId: string, dn: string): Promise<boolean> {
+  await ensureSchema();
+  const domain = dn.trim().toLowerCase();
+  const r = await db().execute({
+    sql: `SELECT 1 FROM parked_domains WHERE account_id = ? AND domain = ?
+          UNION SELECT 1 FROM accounts WHERE id = ? AND lower(domain) = ?
+          UNION SELECT 1 FROM tenants  WHERE account_id = ? AND domain = ?
+          LIMIT 1`,
+    args: [accountId, domain, accountId, domain, accountId, domain],
+  });
+  if (r.rows.length) return true;
+  const a = await db().execute({ sql: `SELECT is_admin FROM accounts WHERE id = ?`, args: [accountId] });
+  return Number((a.rows[0] as any)?.is_admin || 0) === 1;
 }
 
 /** The waitlist for one domain (that the caller owns). */

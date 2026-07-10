@@ -79,6 +79,8 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           </div>
         )}
 
+        <a className="t-bid" href={`/?bid=${encodeURIComponent(cfg.dn)}`}>💰 Bid on this domain</a>
+
         {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
         <footer className="t-foot">

@@ -241,6 +241,25 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .t-foot a { color: var(--acid); }
 .t-foot a:hover { text-decoration: underline; }
 
+/* domain bidding */
+.t-bid { display: inline-block; margin: 26px auto 0; font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em;
+  color: var(--tenant-accent, var(--acid)); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; transition: background .15s, color .15s; }
+.t-bid:hover { background: var(--tenant-accent, var(--acid)); color: #0a0c08; }
+.bid-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin: 20px auto; max-width: 460px; }
+.bid-stats > div { flex: 1 1 120px; background: var(--panel, #101210); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.bid-stats dt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ash); margin: 0 0 4px; }
+.bid-stats dd { margin: 0; font-size: 20px; font-weight: 700; color: var(--bone); }
+.bidform { display: flex; flex-direction: column; gap: 10px; max-width: 380px; margin: 0 auto; text-align: left; }
+.bidform input, .bidform textarea { width: 100%; padding: 12px 14px; background: #0b0d0a; border: 1px solid var(--line); border-radius: 8px; color: var(--bone); font: inherit; }
+.bidform input:focus, .bidform textarea:focus { outline: none; border-color: var(--tenant-accent, var(--acid)); }
+.bid-amount { position: relative; }
+.bid-amount .bid-cur { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ash); }
+.bid-amount input { padding-left: 26px; }
+.buy-now { margin: 12px auto 0; display: block; }
+.ed-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 10px 0; }
+.ed-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ash); }
+.ed-grid input { padding: 9px 11px; background: #0b0d0a; border: 1px solid var(--line); border-radius: 7px; color: var(--bone); font: inherit; }
+
 /* dashboard */
 .dash { max-width: 960px; margin: 0 auto; padding: 24px; }
 .dash h1 { font-family: var(--display); text-transform: uppercase; font-size: 34px; margin: 8px 0 4px; }

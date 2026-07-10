@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "waitlist" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "waitlist" | "auctions" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -76,11 +76,14 @@ export default function Dashboard() {
       <div className="tabs">
         <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
         <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
+        <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
       </div>
 
       {tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "auctions" ? (
+        <AuctionsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "waitlist" ? (
         <WaitlistPanel onError={(m) => say(m, false)} />
       ) : (
@@ -369,6 +372,119 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
               <li key={i}>
                 <span>{s.email}</span>
                 <span className="muted">{s.verified ? "✓ confirmed" : "pending"}{s.ref ? ` · ref:${s.ref}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function AuctionsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [data, setData] = useState<any | null>(null);
+  const [reserve, setReserve] = useState("");
+  const [buyNow, setBuyNow] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const money = (c: number) => `$${(c / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+  const load = async (dn: string) => {
+    setActive(dn); setData(null);
+    try {
+      const r = await fetch(`/api/auctions?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setData(d);
+      setReserve(d.reserveCents != null ? String(d.reserveCents / 100) : "");
+      setBuyNow(d.buyNowCents != null ? String(d.buyNowCents / 100) : "");
+    } catch (e: any) { onError(e.message || "Failed to load."); setData({ bids: [] }); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setDomains(d.parkedDomains || []);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async () => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auctions", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dn: active, reserve, buyNow }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("Auction saved."); await load(active);
+    } catch (e: any) { onError(e.message || "Save failed."); } finally { setBusy(false); }
+  };
+
+  const accept = async (bidId: string, email: string) => {
+    if (!active || !confirm(`Accept the bid from ${email}? This closes the auction.`)) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auctions", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dn: active, action: "accept", bidId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("Bid accepted — auction closed."); await load(active);
+    } catch (e: any) { onError(e.message || "Accept failed."); } finally { setBusy(false); }
+  };
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Auctions</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab, then set a reserve/buy-now and collect bids here.</p></section>;
+  }
+
+  const closed = data?.status === "closed";
+  return (
+    <section className="card2">
+      <h2>Auctions</h2>
+      <p className="sub">Each parked domain collects bids forever, until you accept one. Reserve is hidden from bidders; a bid at or above buy-now wins instantly.</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>
+            {d.domain}
+          </button>
+        ))}
+      </div>
+      {active && data && (
+        <>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="ed-h">{active} {closed ? "— closed 🔒" : ""}</h3>
+            <a className="btn2 ghost" href={`/?bid=${encodeURIComponent(active)}`} target="_blank" rel="noopener noreferrer">View bid page ↗</a>
+          </div>
+
+          <div className="ed-grid">
+            <label>Reserve price (USD)
+              <input type="number" min="0" step="1" placeholder="hidden from bidders" value={reserve} onChange={(e) => setReserve(e.target.value)} disabled={closed} />
+            </label>
+            <label>Buy-it-now price (USD)
+              <input type="number" min="0" step="1" placeholder="optional instant win" value={buyNow} onChange={(e) => setBuyNow(e.target.value)} disabled={closed} />
+            </label>
+          </div>
+          {!closed && <button className="btn2" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save auction"}</button>}
+
+          <h3 className="ed-h" style={{ marginTop: 18 }}>Bids ({data.bids?.length || 0})</h3>
+          <ul className="list">
+            {(!data.bids || data.bids.length === 0) && <li className="muted">No bids yet — share the bid page.</li>}
+            {data.bids?.map((b: any) => (
+              <li key={b.id}>
+                <span><b>{money(b.amount_cents)}</b> — {b.bidder_email}{b.message ? <span className="muted"> · “{b.message}”</span> : null}</span>
+                <span>
+                  {b.status === "accepted" ? <span className="muted">✓ accepted</span>
+                    : b.status === "rejected" ? <span className="muted">passed</span>
+                    : closed ? null
+                    : <button className="btn2 ghost" onClick={() => accept(b.id, b.bidder_email)} disabled={busy}>Accept</button>}
+                </span>
               </li>
             ))}
           </ul>

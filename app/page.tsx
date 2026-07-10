@@ -3,6 +3,7 @@ import { configFor, safeDomain } from "@/lib/config";
 import { getTenantConfig } from "@/lib/db";
 import Landing from "@/components/Landing";
 import Tenant from "@/components/Tenant";
+import BidPage from "@/components/BidPage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ export default async function Page({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = (await searchParams) || {};
+  const bidDn = safeDomain(sp.bid);
+  if (bidDn) return <BidPage dn={bidDn} />;
   const dn = safeDomain(sp.dn);
   if (!dn) return <Landing />;
 
