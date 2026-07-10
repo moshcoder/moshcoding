@@ -2,14 +2,14 @@
 # moshcoding — one-line installer for the `moshcode` CLI.
 #
 # Usage:
-#   curl -fsSL https://moshcode.sh/install.sh | sh
+#   curl -fsSL https://moshcoding.com/install.sh | sh
 #
 # Subcommands:
-#   curl -fsSL https://moshcode.sh/install.sh | sh -s -- install     (default)
-#   curl -fsSL https://moshcode.sh/install.sh | sh -s -- update
-#   curl -fsSL https://moshcode.sh/install.sh | sh -s -- upgrade     (alias)
-#   curl -fsSL https://moshcode.sh/install.sh | sh -s -- remove
-#   curl -fsSL https://moshcode.sh/install.sh | sh -s -- uninstall   (alias)
+#   curl -fsSL https://moshcoding.com/install.sh | sh -s -- install     (default)
+#   curl -fsSL https://moshcoding.com/install.sh | sh -s -- update
+#   curl -fsSL https://moshcoding.com/install.sh | sh -s -- upgrade     (alias)
+#   curl -fsSL https://moshcoding.com/install.sh | sh -s -- remove
+#   curl -fsSL https://moshcoding.com/install.sh | sh -s -- uninstall   (alias)
 #
 # What it does:
 #   1. Detects OS (Linux/macOS — Windows users: use WSL).
@@ -24,7 +24,7 @@
 # Override env vars:
 #   MOSHCODE_HOME=/path     install dir     (default: $HOME/.moshcode)
 #   MOSHCODE_BIN=/path/dir  wrapper bin dir (default: $HOME/.local/bin)
-#   MOSHCODE_REF=ref        git ref         (default: master)
+#   MOSHCODE_REF=ref        git ref         (default: main)
 #
 # Re-running this script updates an existing install in place.
 
@@ -33,7 +33,7 @@ set -eu
 GH_REPO="moshcoder/moshcode"
 MOSHCODE_REF="${MOSHCODE_REF:-main}"
 TARBALL_URL="https://codeload.github.com/$GH_REPO/tar.gz/$MOSHCODE_REF"
-INSTALL_URL="https://moshcode.sh/install.sh"
+INSTALL_URL="https://moshcoding.com/install.sh"
 
 # ---------------------------------------------------------------------------
 # Operator identity — `curl | sh` can land with HOME/USER unset.
@@ -148,7 +148,7 @@ write_wrapper() {
     mkdir -p "$MOSHCODE_BIN"
     cat > "$WRAPPER" <<WRAPPER_EOF
 #!/bin/sh
-# moshcode wrapper — installed by https://moshcode.sh/install.sh
+# moshcode wrapper — installed by https://moshcoding.com/install.sh
 set -eu
 INSTALL_URL="$INSTALL_URL"
 REAL_BIN="$REAL_BIN"
