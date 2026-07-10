@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { addSignup, verifySignup, getTenantConfig } from "@/lib/db";
 import { safeDomain, configFor } from "@/lib/config";
 import { isEmailConfigured, sendWaitlistVerification } from "@/lib/email";
+import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await addSignup({ email, dn: domain, ua: req.headers.get("user-agent"), ref });
+    if (!result.already) void fireDomainEvent(domain, "waitlist.signup", { email, dn: domain, ref: ref || null });
 
     // Already confirmed — nothing to send.
     if (result.verified) {

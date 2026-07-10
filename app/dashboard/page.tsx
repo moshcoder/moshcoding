@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "waitlist" | "auctions" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -89,11 +89,14 @@ export default function Dashboard() {
         <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
         <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
+        <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
       </div>
 
       {tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "webhooks" ? (
+        <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "auctions" ? (
         <AuctionsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "waitlist" ? (
@@ -464,6 +467,99 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
               <li key={i}>
                 <span>{s.email}</span>
                 <span className="muted">{s.verified ? "✓ confirmed" : "pending"}{s.ref ? ` · ref:${s.ref}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [data, setData] = useState<any | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = async (dn: string) => {
+    setActive(dn); setData(null);
+    try {
+      const r = await fetch(`/api/domain-webhooks?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setData(d);
+    } catch (e: any) { onError(e.message || "Failed to load."); setData({ webhooks: [], events: [] }); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setDomains(d.parkedDomains || []);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const act = async (payload: any, ok: string) => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/domain-webhooks", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dn: active, ...payload }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk(ok); await load(active);
+    } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
+  };
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Webhooks</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab to get hosted webhooks.</p></section>;
+  }
+
+  return (
+    <section className="card2">
+      <h2>Webhooks</h2>
+      <p className="sub">Every parked domain gets hosted webhooks — no server to run. <b>Inbound:</b> POST events to the URL below. <b>Outbound:</b> we POST domain events (waitlist.signup, bid.placed/won/accepted) to your URLs, signed (Standard Webhooks).</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>{d.domain}</button>
+        ))}
+      </div>
+      {active && data && (
+        <>
+          <h3 className="ed-h">Inbound URL <span className="muted">(send events here — no app needed)</span></h3>
+          <div className="row"><input className="inp" readOnly value={data.inboundUrl || ""} /><button className="btn2 ghost" onClick={() => copyText(data.inboundUrl || "")}>Copy</button></div>
+
+          <h3 className="ed-h">Outbound targets</h3>
+          <div className="row">
+            <input className="inp" placeholder="https://your-app.com/hook  or a Discord/Slack/Zapier URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <button className="btn2" disabled={busy || !url.trim()} onClick={() => { act({ url: url.trim() }, "Webhook added."); setUrl(""); }}>Add</button>
+            <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "test" }, "Test event dispatched.")}>Send test</button>
+          </div>
+          <ul className="list">
+            {(!data.webhooks || data.webhooks.length === 0) && <li className="muted">No outbound targets yet.</li>}
+            {data.webhooks?.map((w: any) => (
+              <li key={w.id}>
+                <span>{w.url} <span className="muted">· secret {String(w.secret).slice(0, 12)}…</span></span>
+                <span className="row-actions">
+                  <button className="btn2 ghost" onClick={() => copyText(w.secret)}>Copy secret</button>
+                  <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "delete", id: w.id }, "Removed.")}>Delete</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <h3 className="ed-h">Recent inbound events ({data.events?.length || 0})</h3>
+          <ul className="list">
+            {(!data.events || data.events.length === 0) && <li className="muted">Nothing received yet.</li>}
+            {data.events?.map((e: any) => (
+              <li key={e.id}>
+                <span><b>{e.event_type || "event"}</b> <span className="muted">{e.source ? `· ${String(e.source).slice(0, 40)}` : ""}</span></span>
+                <span className="muted">{e.created_at}</span>
               </li>
             ))}
           </ul>

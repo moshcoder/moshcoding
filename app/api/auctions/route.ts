@@ -10,6 +10,7 @@ import {
   highBid,
   acceptBid,
 } from "@/lib/db";
+import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
     const bidId = String(body.bidId || "");
     const ok = await acceptBid(dn, bidId);
     if (!ok) return NextResponse.json({ error: "Bid not found." }, { status: 404 });
+    void fireDomainEvent(dn, "bid.accepted", { dn, bidId });
     return NextResponse.json({ ok: true, closed: true });
   }
 

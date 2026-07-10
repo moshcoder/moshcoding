@@ -259,6 +259,32 @@ async function initSchema(): Promise<void> {
     )
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_bids_domain ON bids (domain, amount_cents DESC)`);
+
+  // ---- per-parked-domain webhooks (hosted by moshcoding, no owner server) --
+  // Outbound: moshcoding POSTs domain events to the owner's target URLs.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS domain_webhooks (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      dn         TEXT NOT NULL,
+      url        TEXT NOT NULL,
+      secret     TEXT NOT NULL,
+      active     INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_domain_webhooks_dn ON domain_webhooks (dn)`);
+  // Inbound: external services POST to /api/webhooks/<dn>; events land here.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS domain_inbound_events (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      dn         TEXT NOT NULL,
+      source     TEXT,
+      event_type TEXT,
+      payload    TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_domain_inbound_dn ON domain_inbound_events (dn, created_at)`);
 }
 
 /** Adds ADD COLUMN, ignoring the error when the column already exists. */
@@ -725,6 +751,78 @@ export async function accountOwnsDomain(accountId: string, dn: string): Promise<
   if (r.rows.length) return true;
   const a = await db().execute({ sql: `SELECT is_admin FROM accounts WHERE id = ?`, args: [accountId] });
   return Number((a.rows[0] as any)?.is_admin || 0) === 1;
+}
+
+// ---- per-domain webhooks (inbound + outbound) -----------------------------
+export type DomainWebhook = { id: string; dn: string; url: string; secret: string; active: boolean; created_at: string };
+
+/** Is this a real domain on the platform (so we accept inbound events for it)? */
+export async function isKnownDomain(dn: string): Promise<boolean> {
+  await ensureSchema();
+  const d = dn.trim().toLowerCase();
+  const r = await db().execute({
+    sql: `SELECT 1 FROM parked_domains WHERE domain = ?
+          UNION SELECT 1 FROM accounts WHERE lower(domain) = ?
+          UNION SELECT 1 FROM tenants  WHERE domain = ?
+          UNION SELECT 1 FROM auctions WHERE domain = ?
+          UNION SELECT 1 FROM domain_webhooks WHERE dn = ? LIMIT 1`,
+    args: [d, d, d, d, d],
+  });
+  return r.rows.length > 0;
+}
+
+export async function listDomainWebhooks(dn: string): Promise<DomainWebhook[]> {
+  await ensureSchema();
+  const r = await db().execute({ sql: `SELECT * FROM domain_webhooks WHERE dn = ? ORDER BY created_at`, args: [dn.toLowerCase()] });
+  return r.rows.map((x: any) => ({ id: String(x.id), dn: String(x.dn), url: String(x.url), secret: String(x.secret), active: Number(x.active) === 1, created_at: String(x.created_at) }));
+}
+
+/** Active {url,secret} targets for a domain — used by fireDomainEvent. */
+export async function activeDomainWebhooks(dn: string): Promise<{ url: string; secret: string }[]> {
+  await ensureSchema();
+  const r = await db().execute({ sql: `SELECT url, secret FROM domain_webhooks WHERE dn = ? AND active = 1`, args: [dn.toLowerCase()] });
+  return r.rows.map((x: any) => ({ url: String(x.url), secret: String(x.secret) }));
+}
+
+export async function addDomainWebhook(dn: string, url: string, secret: string): Promise<DomainWebhook> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `INSERT INTO domain_webhooks (dn, url, secret) VALUES (?, ?, ?) RETURNING *`,
+    args: [dn.toLowerCase(), url, secret],
+  });
+  const x: any = r.rows[0];
+  return { id: String(x.id), dn: String(x.dn), url: String(x.url), secret: String(x.secret), active: true, created_at: String(x.created_at) };
+}
+
+export async function deleteDomainWebhook(id: string, dn: string): Promise<boolean> {
+  await ensureSchema();
+  const r = await db().execute({ sql: `DELETE FROM domain_webhooks WHERE id = ? AND dn = ?`, args: [id, dn.toLowerCase()] });
+  return Number(r.rowsAffected || 0) > 0;
+}
+
+/** Stores an inbound event, keeping only the most recent 200 per domain. */
+export async function recordInboundEvent(opts: { dn: string; source?: string | null; eventType?: string | null; payload: string }): Promise<void> {
+  await ensureSchema();
+  const dn = opts.dn.toLowerCase();
+  const d = db();
+  await d.execute({
+    sql: `INSERT INTO domain_inbound_events (dn, source, event_type, payload) VALUES (?, ?, ?, ?)`,
+    args: [dn, opts.source ?? null, opts.eventType ?? null, opts.payload.slice(0, 16000)],
+  });
+  await d.execute({
+    sql: `DELETE FROM domain_inbound_events WHERE dn = ? AND id NOT IN
+          (SELECT id FROM domain_inbound_events WHERE dn = ? ORDER BY created_at DESC LIMIT 200)`,
+    args: [dn, dn],
+  });
+}
+
+export async function listInboundEvents(dn: string, limit = 50): Promise<{ id: string; source: string | null; event_type: string | null; payload: string; created_at: string }[]> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `SELECT id, source, event_type, payload, created_at FROM domain_inbound_events WHERE dn = ? ORDER BY created_at DESC LIMIT ?`,
+    args: [dn.toLowerCase(), Math.min(limit, 200)],
+  });
+  return r.rows.map((x: any) => ({ id: String(x.id), source: x.source ? String(x.source) : null, event_type: x.event_type ? String(x.event_type) : null, payload: String(x.payload), created_at: String(x.created_at) }));
 }
 
 /** The waitlist for one domain (that the caller owns). */

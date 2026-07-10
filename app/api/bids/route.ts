@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession, SESSION_COOKIE } from "@/lib/session";
 import { safeDomain } from "@/lib/config";
 import { addBid, getAuction, highBid } from "@/lib/db";
+import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   try {
     const { bid, won } = await addBid({ dn, email, amountCents, message, sub: s?.sub ?? null });
+    void fireDomainEvent(dn, won ? "bid.won" : "bid.placed", { dn, email, amountCents: bid.amount_cents, message });
     return NextResponse.json({
       ok: true,
       won,
