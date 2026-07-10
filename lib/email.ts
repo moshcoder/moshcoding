@@ -92,3 +92,45 @@ export function sendWaitlistVerification(opts: {
 </body></html>`;
   return send({ to: opts.email, subject, html, text });
 }
+
+/** Sends a password-reset link. Caller falls back to logging the link if unsent. */
+export function sendPasswordReset(opts: {
+  email: string;
+  token: string;
+  brand?: string;
+}): Promise<SendResult> {
+  const brand = opts.brand || "moshcoding";
+  const url = `${appBaseUrl()}/reset?token=${encodeURIComponent(opts.token)}`;
+  const subject = `Reset your ${brand} password`;
+  const text =
+    `Someone asked to reset the password for your ${brand} account.\n\n` +
+    `Set a new one here (link expires in 1 hour):\n${url}\n\n` +
+    `If this wasn't you, ignore this email — your password stays unchanged.`;
+  const html = `<!doctype html>
+<html><body style="margin:0;background:#0b0b0c;color:#e7e7e7;font-family:ui-monospace,Menlo,Consolas,monospace">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:28px">
+        <tr><td>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${brand} 🤘</h1>
+          <p style="margin:0 0 20px;line-height:1.5;color:#c9c9c9">
+            Reset your password. This link expires in 1 hour.
+          </p>
+          <p style="margin:0 0 24px">
+            <a href="${url}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">
+              Set a new password
+            </a>
+          </p>
+          <p style="margin:0;font-size:12px;color:#8a8a8a;line-height:1.5;word-break:break-all">
+            Or paste this link:<br>${url}
+          </p>
+          <p style="margin:18px 0 0;font-size:12px;color:#6a6a6a">
+            Didn't ask for this? Ignore it — nothing changes.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  return send({ to: opts.email, subject, html, text });
+}

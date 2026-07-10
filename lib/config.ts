@@ -50,6 +50,11 @@ function handle(v: unknown): string | null {
   return h || null;
 }
 
+/** Public wrapper around the internal handle normalizer (used by signup). */
+export function normalizeHandle(v: unknown): string | null {
+  return handle(v);
+}
+
 /** Normalizes a fallback target to an absolute URL (bare domains get https://). */
 function fallbackUrl(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -124,6 +129,8 @@ export type TenantOverrides = {
   linkParams?: Record<string, string | undefined | null>;
   /** Raw ?aff_link1=&aff_link2=… affiliate/sponsor link params. */
   affParams?: Record<string, string | undefined | null>;
+  /** Override loaded from the DB tenants table for a provisioned (paid) domain. */
+  tenantOverride?: Record<string, any> | null;
 };
 
 /**
@@ -177,6 +184,17 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   const file = path.join(CONFIG_DIR, `${dn}.json`);
   if (fs.existsSync(file)) {
     try { override = JSON.parse(fs.readFileSync(file, "utf8")); } catch { override = {}; }
+  }
+
+  // A provisioned (paid) tenant is stored in the DB — it wins over the on-disk
+  // file (which won't persist on Railway), merging socials rather than replacing.
+  if (opts.tenantOverride && typeof opts.tenantOverride === "object") {
+    const t = opts.tenantOverride;
+    override = {
+      ...override,
+      ...t,
+      socials: { ...(override.socials || {}), ...(t.socials || {}) },
+    };
   }
 
   // Query-string overrides win over the on-disk config file so a single link can

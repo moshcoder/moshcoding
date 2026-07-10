@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { authConfigured } from "@/lib/session";
+import { coinpayConfigured } from "@/lib/session";
 import { makePkce, authorizeUrl } from "@/lib/oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!authConfigured()) {
-    return new NextResponse("Login is not configured yet.", { status: 503 });
+  if (!coinpayConfigured()) {
+    return new NextResponse("CoinPay login is not configured yet.", { status: 503 });
   }
   const { verifier, challenge, state } = makePkce();
   const res = NextResponse.redirect(authorizeUrl(challenge, state));

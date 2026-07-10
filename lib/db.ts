@@ -162,6 +162,46 @@ async function initSchema(): Promise<void> {
       UNIQUE (provider, idempotency_key)
     )
   `);
+
+  // ---- native accounts (email+password) + paid tenant provisioning ---------
+  // Separate from `users` (which is keyed by OAuth `sub`). A native session uses
+  // sub = "acct:<id>". `status` goes pending -> active once the $1 setup fee is
+  // paid via CoinPay; provisioning then writes the `tenants` row below.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id            TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      email         TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      domain        TEXT,
+      handles       TEXT NOT NULL DEFAULT '{}',
+      payout_wallet TEXT,
+      payout_chain  TEXT,
+      plan          TEXT NOT NULL DEFAULT 'free',
+      status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active')),
+      coinpay_payment_id TEXT,
+      paid_at       TEXT,
+      reset_token   TEXT,
+      reset_expires TEXT,
+      ref           TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_accounts_payment ON accounts (coinpay_payment_id)`);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_accounts_reset ON accounts (reset_token)`);
+
+  // Read-model for tenant `?dn=` pages so a provisioned page renders from the DB
+  // (on-disk configs/*.json don't persist on Railway). `config` is the same
+  // override shape as a configs/<dn>.json file.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      domain     TEXT PRIMARY KEY,
+      account_id TEXT,
+      config     TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 }
 
 /** Adds ADD COLUMN, ignoring the error when the column already exists. */
@@ -256,4 +296,186 @@ export async function upsertUser(u: { sub: string; email?: string | null; name?:
             email = excluded.email, name = excluded.name, last_login = datetime('now')`,
     args: [u.sub, u.email || null, u.name || null],
   });
+}
+
+// ---- native accounts ------------------------------------------------------
+
+export type Account = {
+  id: string;
+  email: string;
+  domain: string | null;
+  handles: Record<string, string>;
+  payout_wallet: string | null;
+  payout_chain: string | null;
+  plan: string;
+  status: "pending" | "active";
+  coinpay_payment_id: string | null;
+  paid_at: string | null;
+};
+
+function rowToAccount(r: any): Account {
+  let handles: Record<string, string> = {};
+  try { handles = r.handles ? JSON.parse(String(r.handles)) : {}; } catch { handles = {}; }
+  return {
+    id: String(r.id),
+    email: String(r.email),
+    domain: r.domain ? String(r.domain) : null,
+    handles,
+    payout_wallet: r.payout_wallet ? String(r.payout_wallet) : null,
+    payout_chain: r.payout_chain ? String(r.payout_chain) : null,
+    plan: String(r.plan || "free"),
+    status: (r.status === "active" ? "active" : "pending"),
+    coinpay_payment_id: r.coinpay_payment_id ? String(r.coinpay_payment_id) : null,
+    paid_at: r.paid_at ? String(r.paid_at) : null,
+  };
+}
+
+/** Creates a native account (status='pending'). Throws on a duplicate email. */
+export async function createAccount(opts: {
+  email: string;
+  passwordHash: string;
+  passwordSalt: string;
+  domain?: string | null;
+  handles?: Record<string, string>;
+  payoutWallet?: string | null;
+  payoutChain?: string | null;
+  ref?: string | null;
+}): Promise<Account> {
+  await ensureSchema();
+  const email = opts.email.trim().toLowerCase();
+  const res = await db().execute({
+    sql: `INSERT INTO accounts (email, password_hash, password_salt, domain, handles, payout_wallet, payout_chain, ref)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          RETURNING *`,
+    args: [
+      email, opts.passwordHash, opts.passwordSalt,
+      opts.domain || null, JSON.stringify(opts.handles || {}),
+      opts.payoutWallet || null, opts.payoutChain || null, opts.ref || null,
+    ],
+  });
+  return rowToAccount(res.rows[0]);
+}
+
+export async function getAccountByEmail(
+  email: string,
+): Promise<(Account & { password_hash: string; password_salt: string }) | null> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT * FROM accounts WHERE email = ?`,
+    args: [email.trim().toLowerCase()],
+  });
+  const r = res.rows[0];
+  if (!r) return null;
+  return { ...rowToAccount(r), password_hash: String(r.password_hash), password_salt: String(r.password_salt) };
+}
+
+export async function getAccountById(id: string): Promise<Account | null> {
+  await ensureSchema();
+  const res = await db().execute({ sql: `SELECT * FROM accounts WHERE id = ?`, args: [id] });
+  return res.rows[0] ? rowToAccount(res.rows[0]) : null;
+}
+
+/** Records the CoinPay payment id we created for a pending account's setup fee. */
+export async function setAccountPayment(id: string, paymentId: string): Promise<void> {
+  await ensureSchema();
+  await db().execute({
+    sql: `UPDATE accounts SET coinpay_payment_id = ? WHERE id = ?`,
+    args: [paymentId, id],
+  });
+}
+
+/**
+ * Marks an account active + paid, idempotently. Looks the account up by the
+ * CoinPay payment id (webhook path) or by account id (dev auto-activate). Returns
+ * the (now active) account, or null if not found.
+ */
+export async function activateAccount(opts: { paymentId?: string; accountId?: string }): Promise<Account | null> {
+  await ensureSchema();
+  const where = opts.paymentId ? "coinpay_payment_id = ?" : "id = ?";
+  const arg = opts.paymentId || opts.accountId;
+  if (!arg) return null;
+  const res = await db().execute({
+    sql: `UPDATE accounts
+             SET status = 'active', plan = 'pro',
+                 paid_at = COALESCE(paid_at, datetime('now'))
+           WHERE ${where}
+           RETURNING *`,
+    args: [arg],
+  });
+  return res.rows[0] ? rowToAccount(res.rows[0]) : null;
+}
+
+export async function setResetToken(email: string, token: string, expiresIso: string): Promise<boolean> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `UPDATE accounts SET reset_token = ?, reset_expires = ? WHERE email = ?`,
+    args: [token, expiresIso, email.trim().toLowerCase()],
+  });
+  return res.rowsAffected > 0;
+}
+
+/** Returns the account id for a valid, unexpired reset token, or null. */
+export async function accountForResetToken(token: string): Promise<string | null> {
+  if (!token) return null;
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT id FROM accounts WHERE reset_token = ? AND reset_expires > datetime('now')`,
+    args: [token],
+  });
+  return res.rows[0] ? String(res.rows[0].id) : null;
+}
+
+/** Updates the editable profile fields (payout wallet + social handles). */
+export async function updateAccountProfile(id: string, opts: {
+  payoutWallet?: string | null;
+  payoutChain?: string | null;
+  handles?: Record<string, string>;
+}): Promise<Account | null> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `UPDATE accounts
+             SET payout_wallet = COALESCE(?, payout_wallet),
+                 payout_chain  = COALESCE(?, payout_chain),
+                 handles       = COALESCE(?, handles)
+           WHERE id = ?
+           RETURNING *`,
+    args: [
+      opts.payoutWallet ?? null,
+      opts.payoutChain ?? null,
+      opts.handles ? JSON.stringify(opts.handles) : null,
+      id,
+    ],
+  });
+  return res.rows[0] ? rowToAccount(res.rows[0]) : null;
+}
+
+export async function updatePassword(id: string, hash: string, salt: string): Promise<void> {
+  await ensureSchema();
+  await db().execute({
+    sql: `UPDATE accounts SET password_hash = ?, password_salt = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?`,
+    args: [hash, salt, id],
+  });
+}
+
+// ---- tenant read-model ----------------------------------------------------
+
+/** Upserts the tenant config rendered at ?dn=<domain>. `config` is override JSON. */
+export async function upsertTenant(domain: string, accountId: string | null, config: Record<string, unknown>): Promise<void> {
+  await ensureSchema();
+  await db().execute({
+    sql: `INSERT INTO tenants (domain, account_id, config, updated_at)
+          VALUES (?, ?, ?, datetime('now'))
+          ON CONFLICT (domain) DO UPDATE SET
+            account_id = excluded.account_id, config = excluded.config, updated_at = datetime('now')`,
+    args: [domain.trim().toLowerCase(), accountId, JSON.stringify(config || {})],
+  });
+}
+
+/** Loads the override config for a provisioned tenant, or null if none. */
+export async function getTenantConfig(domain: string): Promise<Record<string, unknown> | null> {
+  await ensureSchema();
+  const res = await db().execute({ sql: `SELECT config FROM tenants WHERE domain = ?`, args: [domain.trim().toLowerCase()] });
+  const raw = res.rows[0]?.config;
+  if (!raw) return null;
+  try { return JSON.parse(String(raw)); } catch { return null; }
 }

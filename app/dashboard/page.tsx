@@ -54,8 +54,11 @@ export default function Dashboard() {
     return (
       <div className="dash">
         <h1>Dashboard</h1>
-        <p className="sub">Sign in to manage orgs, teams, projects &amp; webhooks.</p>
-        <a className="btn2" href="/auth/login">Log in with CoinPay</a>
+        <p className="sub">Sign in to manage your page, socials &amp; payout wallet.</p>
+        <div className="row">
+          <a className="btn2" href="/login">Log in</a>
+          <a className="btn2 ghost" href="/signup">Claim your page — $1</a>
+        </div>
       </div>
     );
   }
@@ -67,6 +70,8 @@ export default function Dashboard() {
         <a className="btn2 ghost" href="/">← home</a>
       </div>
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
+
+      <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
 
       <section className="card2">
         <h2>Organizations</h2>
@@ -110,6 +115,83 @@ export default function Dashboard() {
         <InviteForm teams={teams} onDone={(m, ok) => say(m, ok)} />
       </section>
     </div>
+  );
+}
+
+type AccountView = {
+  email: string;
+  domain: string | null;
+  handles: Record<string, string>;
+  payout_wallet: string | null;
+  plan: string;
+  status: string;
+  pageUrl: string | null;
+  payUrl: string | null;
+};
+
+function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [acct, setAcct] = useState<AccountView | null | undefined>(undefined);
+  const [wallet, setWallet] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setAcct(d.account);
+      if (d.account?.payout_wallet) setWallet(d.account.payout_wallet);
+    }).catch(() => setAcct(null));
+  }, []);
+
+  // No native account (e.g. a CoinPay-OAuth-only session) — nothing to show.
+  if (acct === undefined || acct === null) return null;
+
+  const saveWallet = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/account", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payoutWallet: wallet.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setAcct(data.account);
+      onOk("Payout wallet saved.");
+    } catch (e: any) { onError(e.message || "Couldn't save."); }
+    finally { setSaving(false); }
+  };
+
+  const socials = Object.entries(acct.handles || {});
+  return (
+    <section className="card2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>Your page</h2>
+        <span className="pill">{acct.status === "active" ? `${acct.plan} · live` : "setup pending"}</span>
+      </div>
+
+      {acct.status === "pending" && (
+        <p className="dash-msg err" style={{ marginTop: 0 }}>
+          Your $1 setup isn't complete yet.{" "}
+          {acct.payUrl ? <a href={acct.payUrl}>Finish checkout →</a> : "Retry from the signup page."}
+        </p>
+      )}
+
+      <ul className="list">
+        <li><span>Domain</span><span className="muted">{acct.domain || "—"}</span></li>
+        <li>
+          <span>Public page</span>
+          <span className="muted">
+            {acct.pageUrl ? <a href={acct.pageUrl} target="_blank" rel="noopener noreferrer">{acct.pageUrl} ↗</a> : "—"}
+          </span>
+        </li>
+        <li><span>Socials</span><span className="muted">{socials.length ? socials.map(([k, v]) => `${k}:${v}`).join("  ") : "none"}</span></li>
+      </ul>
+
+      <h2 style={{ marginTop: 16 }}>CoinPay payout wallet</h2>
+      <p className="sub">Where your earnings/commissions get paid.</p>
+      <div className="row">
+        <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
+        <button className="btn2" disabled={saving} onClick={saveWallet}>{saving ? "…" : "Save wallet"}</button>
+      </div>
+    </section>
   );
 }
 

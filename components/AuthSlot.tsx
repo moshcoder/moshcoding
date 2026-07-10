@@ -31,7 +31,8 @@ export default function AuthSlot() {
   }
   return (
     <span className="auth-slot">
-      <a className="auth-btn primary" href="/auth/login">Log in with CoinPay</a>
+      <a className="auth-btn" href="/login">Log in</a>
+      <a className="auth-btn primary" href="/signup">Claim your page</a>
     </span>
   );
 }

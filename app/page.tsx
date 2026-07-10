@@ -1,4 +1,5 @@
 import { configFor, safeDomain } from "@/lib/config";
+import { getTenantConfig } from "@/lib/db";
 import Landing from "@/components/Landing";
 import Tenant from "@/components/Tenant";
 
@@ -13,6 +14,9 @@ export default async function Page({
   const sp = (await searchParams) || {};
   const dn = safeDomain(sp.dn);
   if (!dn) return <Landing />;
+
+  // A paid/provisioned domain has a tenants row that overrides the defaults.
+  const tenantOverride = await getTenantConfig(dn).catch(() => null);
 
   // collect ?social_x=&social_bluesky=… into a per-platform map, and
   // ?link_1=&link_2=… arbitrary custom links (our apps etc.) into another.
@@ -31,6 +35,7 @@ export default async function Page({
     <Tenant
       cfg={configFor(dn, {
         socials: sp.socials, fallback: sp.fallback, social, style: sp.style, linkParams, affParams,
+        tenantOverride,
       })}
     />
   );

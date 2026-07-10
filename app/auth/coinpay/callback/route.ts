@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authConfigured, signSession, SESSION_COOKIE, SESSION_TTL } from "@/lib/session";
+import { coinpayConfigured, signSession, SESSION_COOKIE, SESSION_TTL } from "@/lib/session";
 import { exchangeCode, fetchUserinfo, APP_BASE_URL } from "@/lib/oauth";
 import { upsertUser } from "@/lib/db";
 
@@ -11,7 +11,7 @@ function fail(msg: string) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!authConfigured()) return new NextResponse("Login is not configured yet.", { status: 503 });
+  if (!coinpayConfigured()) return new NextResponse("CoinPay login is not configured yet.", { status: 503 });
   const sp = req.nextUrl.searchParams;
   if (sp.get("error")) return fail(sp.get("error_description") || sp.get("error")!);
   const code = sp.get("code");
