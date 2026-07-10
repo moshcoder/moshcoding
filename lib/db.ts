@@ -192,6 +192,7 @@ async function initSchema(): Promise<void> {
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_accounts_reset ON accounts (reset_token)`);
   // config added via ALTER for accounts tables created before it existed.
   await addColumnIfMissing("accounts", "config", "TEXT NOT NULL DEFAULT '{}'");
+  await addColumnIfMissing("accounts", "is_admin", "INTEGER NOT NULL DEFAULT 0");
 
   // Read-model for tenant `?dn=` pages so a provisioned page renders from the DB
   // (on-disk configs/*.json don't persist on Railway). `config` is the same
@@ -338,9 +339,16 @@ export type Account = {
   status: "pending" | "active";
   coinpay_payment_id: string | null;
   paid_at: string | null;
+  is_admin: boolean;
   /** Full editable tenant config (socials, customLinks, sponsors, hashtags, stream, accents, text). */
   config: Record<string, any>;
 };
+
+/** ADMIN_EMAILS (comma/space separated) skip the $1 fee and are auto-active. */
+export function isAdminEmail(email: string): boolean {
+  const list = (process.env.ADMIN_EMAILS || "").toLowerCase().split(/[,\s]+/).filter(Boolean);
+  return list.includes(email.trim().toLowerCase());
+}
 
 function rowToAccount(r: any): Account {
   let handles: Record<string, string> = {};
@@ -358,6 +366,7 @@ function rowToAccount(r: any): Account {
     status: (r.status === "active" ? "active" : "pending"),
     coinpay_payment_id: r.coinpay_payment_id ? String(r.coinpay_payment_id) : null,
     paid_at: r.paid_at ? String(r.paid_at) : null,
+    is_admin: Boolean(Number(r.is_admin || 0)),
     config,
   };
 }
@@ -413,17 +422,32 @@ export async function getAccountByEmail(
 export async function findOrCreateAccountByEmail(email: string): Promise<Account> {
   await ensureSchema();
   const e = email.trim().toLowerCase();
+  const admin = isAdminEmail(e);
+  let acct: Account;
   const existing = await getAccountByEmail(e);
-  if (existing) return existing;
-  const res = await db().execute({
-    // "oauth" sentinel hash never matches scrypt-hex, so password login stays disabled.
-    sql: `INSERT INTO accounts (email, password_hash, password_salt, config)
-          VALUES (?, 'oauth', ?, '{}')
-          ON CONFLICT (email) DO UPDATE SET email = excluded.email
-          RETURNING *`,
-    args: [e, randomBytes(16).toString("hex")],
-  });
-  return rowToAccount(res.rows[0]);
+  if (existing) {
+    acct = existing;
+  } else {
+    const res = await db().execute({
+      // "oauth" sentinel hash never matches scrypt-hex, so password login stays disabled.
+      sql: `INSERT INTO accounts (email, password_hash, password_salt, config, is_admin, status, plan)
+            VALUES (?, 'oauth', ?, '{}', ?, ?, ?)
+            ON CONFLICT (email) DO UPDATE SET email = excluded.email
+            RETURNING *`,
+      args: [e, randomBytes(16).toString("hex"), admin ? 1 : 0, admin ? "active" : "pending", admin ? "pro" : "free"],
+    });
+    acct = rowToAccount(res.rows[0]);
+  }
+  // Keep admins active + flagged (no $1) even if the row predates admin status.
+  if (admin && (!acct.is_admin || acct.status !== "active")) {
+    const res = await db().execute({
+      sql: `UPDATE accounts SET is_admin = 1, status = 'active', plan = 'pro',
+                 paid_at = COALESCE(paid_at, datetime('now')) WHERE id = ? RETURNING *`,
+      args: [acct.id],
+    });
+    acct = rowToAccount(res.rows[0]);
+  }
+  return acct;
 }
 
 /** Sets the tenant domain (used when a CoinPay user claims a page from the dashboard). */

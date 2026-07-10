@@ -88,6 +88,7 @@ function view(acct: any) {
     payout_chain: acct.payout_chain,
     plan: acct.plan,
     status: acct.status,
+    is_admin: acct.is_admin,
     config: acct.config || {},
     pageUrl: acct.domain ? `/?dn=${encodeURIComponent(acct.domain)}` : null,
     payUrl: acct.status === "pending" && acct.coinpay_payment_id ? payUrl(acct.coinpay_payment_id) : null,
