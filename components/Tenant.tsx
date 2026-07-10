@@ -114,7 +114,12 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
 
         <AffiliateJoin dn={cfg.dn} />
 
-        <a className="t-bid" href={`https://${cfg.dn}/?bid=${encodeURIComponent(cfg.dn)}`} target="_top" rel="noopener">💰 Bid on this domain</a>
+        {/* Relative + same-origin: navigates to <origin>/?bid=<dn>. On a masked
+            (iframed) domain the bid page renders IN the frame — the ?bid CSP rule
+            (middleware) allows it — keeping the branded URL; on a direct domain
+            it's just a same-origin nav. Either way the ?bid query survives, which
+            a target=_top break-out to a masked domain would drop. */}
+        <a className="t-bid" href={`/?bid=${encodeURIComponent(cfg.dn)}`}>💰 Bid on this domain</a>
 
         {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
