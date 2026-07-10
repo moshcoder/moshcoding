@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+
+// Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
+// bare /dashboard). Keep this in sync with the tab buttons below.
+const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns"] as const;
+type Tab = (typeof TABS)[number];
 
 type Org = { id: string; name: string };
 type Team = { id: string; name: string; org_id: string; org_name: string; role: string };
@@ -29,7 +35,20 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates" | "dns">("page");
+  // Seed the active tab from the URL slug so /dashboard/dns opens the DNS tab and
+  // every tab is directly bookmarkable.
+  const params = useParams();
+  const slug = Array.isArray(params?.tab) ? params.tab[0] : (params?.tab as string | undefined);
+  const [tab, setTabState] = useState<Tab>((TABS as readonly string[]).includes(slug || "") ? (slug as Tab) : "page");
+
+  // Switch tab and reflect it in the address bar (replaceState keeps in-page state
+  // and avoids a server round-trip; the bare /dashboard is the "page" tab).
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", t === "page" ? "/dashboard" : `/dashboard/${t}`);
+    }
+  };
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -599,17 +618,52 @@ function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m
 function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
   const [data, setData] = useState<any>(undefined);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  // Remembers which domains were already live so the 15s poll only celebrates a
+  // fresh transition (avoids re-announcing "live" on every tick).
+  const liveRef = useRef<Set<string>>(new Set());
 
-  const load = async (announce?: string) => {
+  // Fetch domain status. `mode` decides the feedback:
+  //  - "manual": the user clicked Verify — always report the outcome + spin the button
+  //  - "auto":   background 15s poll — stay quiet unless a domain just went live
+  //  - "silent": initial load / after park/unpark — no verify chatter
+  const load = async (mode: "manual" | "auto" | "silent" = "silent") => {
+    if (mode === "manual") setChecking(true);
     try {
       const r = await fetch("/api/domains");
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed to load.");
+      const parked = (d.domains || []).filter((x: any) => x.registered);
+      const liveNow = new Set<string>(parked.filter((x: any) => x.live).map((x: any) => x.domain));
+      const newlyLive = [...liveNow].filter((dn) => !liveRef.current.has(dn));
+      liveRef.current = liveNow;
       setData(d);
-      if (announce) onOk(announce);
-    } catch (e: any) { onError(e.message || "Failed."); setData({ configured: true, domains: [] }); }
+      if (mode === "manual") {
+        if (parked.length === 0) onOk("No parked domains to verify yet — park one below first.");
+        else if (liveNow.size === parked.length) onOk("✓ DNS verified — your domain is live. 🤘");
+        else onOk("DNS records haven't propagated yet. We'll keep checking every 15s — no need to click again.");
+      } else if (mode === "auto" && newlyLive.length) {
+        onOk(`✓ ${newlyLive.join(", ")} is now live! 🤘`);
+      }
+    } catch (e: any) {
+      onError(e.message || "Failed.");
+      if (data === undefined) setData({ configured: true, domains: [] });
+    } finally {
+      if (mode === "manual") setChecking(false);
+    }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { load("silent"); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // Auto-verify: while any parked domain is still pending, re-check every 15s
+  // until it goes live. Stops (and cleans up on unmount / leaving the page) once
+  // nothing is pending, so it never polls needlessly.
+  const pending = (data?.domains || []).some((x: any) => x.registered && !x.live);
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(() => { load("auto"); }, 15000);
+    return () => clearInterval(t);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [pending]);
 
   const park = async (domain: string) => {
     setBusy(true);
@@ -644,9 +698,12 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     <section className="card2">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h2>Custom domain</h2>
-        <button className="btn2 ghost" disabled={busy} onClick={() => load("Rechecked DNS.")}>↻ Verify DNS</button>
+        <button className="btn2 ghost" disabled={busy || checking} onClick={() => load("manual")}>{checking ? "Checking…" : "↻ Verify DNS"}</button>
       </div>
       <p className="sub">Point your own domain straight at moshcoding with two DNS records. Set them at your registrar (Porkbun, Namecheap, Cloudflare…), then hit <b>Verify DNS</b>. The TLS cert is issued automatically.</p>
+      {pending && (
+        <p className="sub" style={{ opacity: 0.75 }}>⏳ Auto-checking your DNS every 15s — you can leave this page open and it&apos;ll go live on its own.</p>
+      )}
 
       {domains.length === 0 && (
         <p className="sub">You haven&apos;t claimed a domain yet — add one on the <b>Domains</b> tab first, then park it here.</p>
