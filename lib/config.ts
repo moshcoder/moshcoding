@@ -14,6 +14,8 @@ export type TenantConfig = {
   cta: string;
   hashtag: string;
   links: TenantLink[];
+  /** Genres from ?style=metal,punk — drives the AI hero-image generation. */
+  styles: string[];
 };
 
 export function safeDomain(dn: unknown): string | null {
@@ -53,10 +55,15 @@ function socialLinks(dn: string, override: any = {}): TenantLink[] {
   // The coming-soon domain usually isn't live yet, so the "website" link points
   // at the fallback target when one is supplied.
   const website = override.website || `https://${dn}`;
-  const s = { website, x: slug, instagram: slug, tiktok: slug, ...(override.socials || {}) };
+  // If the tenant named any socials explicitly, show ONLY those (+ website).
+  // Otherwise auto-derive the common handles from the domain slug.
+  const hasExplicit = override.socials && Object.keys(override.socials).length > 0;
+  const defaults = hasExplicit ? {} : { x: slug, instagram: slug, tiktok: slug };
+  const s: any = { website, ...defaults, ...(override.socials || {}) };
   const links: TenantLink[] = [];
   if (s.website) links.push({ label: dn, url: s.website, kind: "web" });
   if (s.x) links.push({ label: `@${s.x}`, url: `https://x.com/${s.x}`, kind: "x" });
+  if (s.bluesky) links.push({ label: `@${s.bluesky}`, url: `https://bsky.app/profile/${s.bluesky}`, kind: "bluesky" });
   if (s.instagram) links.push({ label: `@${s.instagram}`, url: `https://instagram.com/${s.instagram}`, kind: "instagram" });
   if (s.tiktok) links.push({ label: `@${s.tiktok}`, url: `https://tiktok.com/@${s.tiktok}`, kind: "tiktok" });
   if (s.github) links.push({ label: s.github, url: `https://github.com/${s.github}`, kind: "github" });
@@ -66,12 +73,40 @@ function socialLinks(dn: string, override: any = {}): TenantLink[] {
   return links;
 }
 
+// Query-param platform aliases → canonical social key.
+const PLATFORM_ALIAS: Record<string, string> = {
+  x: "x", twitter: "x",
+  bluesky: "bluesky", blusky: "bluesky", bsky: "bluesky",
+  instagram: "instagram", ig: "instagram",
+  tiktok: "tiktok", tt: "tiktok",
+  github: "github", gh: "github",
+  youtube: "youtube", yt: "youtube",
+  spotify: "spotify", discord: "discord",
+  web: "website", website: "website",
+};
+// These take a full URL rather than a bare @handle.
+const URL_PLATFORMS = new Set(["website", "spotify", "discord"]);
+
+const KNOWN_GENRES = [
+  "metal", "punk", "hardcore", "deathcore", "metalcore", "grunge", "thrash",
+  "doom", "black-metal", "nu-metal", "emo", "screamo", "industrial", "goth",
+];
+export function parseStyles(v: unknown): string[] {
+  if (typeof v !== "string") return [];
+  return v.split(",").map((s) => s.trim().toLowerCase().replace(/\s+/g, "-"))
+    .filter((s) => /^[a-z-]{2,20}$/.test(s)).slice(0, 4);
+}
+
 /** Per-request overrides threaded from the query string (see app/page.tsx). */
 export type TenantOverrides = {
   /** Social handle applied across X / Instagram / TikTok (with or without @). */
   socials?: string | null;
   /** Fallback website/domain to link to while the coming-soon domain is dark. */
   fallback?: string | null;
+  /** Per-platform handles/URLs, e.g. { x: "@a", bluesky: "@b.bsky.social" }. Keys may be aliases. */
+  social?: Record<string, string | undefined | null>;
+  /** Raw ?style= value, e.g. "metal,punk". */
+  style?: string | null;
 };
 
 export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig {
@@ -112,6 +147,20 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     }
   }
 
+  // Per-platform overrides (?social_x=&social_bluesky=…) — most specific, win last.
+  if (opts.social) {
+    const per: Record<string, string> = {};
+    for (const [rawK, rawV] of Object.entries(opts.social)) {
+      const key = PLATFORM_ALIAS[rawK.toLowerCase()];
+      if (!key || typeof rawV !== "string" || !rawV.trim()) continue;
+      const val = URL_PLATFORMS.has(key)
+        ? (key === "website" ? fallbackUrl(rawV) : rawV.trim())
+        : handle(rawV);
+      if (val) per[key] = val;
+    }
+    if (Object.keys(per).length) override = { ...override, socials: { ...(override.socials || {}), ...per } };
+  }
+
   const slug = dn.split(".")[0].replace(/[^a-z0-9]/g, "");
   return {
     ...base,
@@ -119,5 +168,6 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     dn,
     hashtag: override.hashtag || (sh ? `#${sh}` : `#${slug}`),
     links: socialLinks(dn, override),
+    styles: parseStyles(opts.style),
   };
 }
