@@ -224,6 +224,7 @@ type AccountView = {
   payout_wallet: string | null;
   plan: string;
   status: string;
+  is_admin?: boolean;
   config: any;
   pageUrl: string | null;
   payUrl: string | null;
@@ -257,6 +258,10 @@ function LinkEditor({ title, rows, setRows }: { title: string; rows: LinkRow[]; 
 
 function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
   const [acct, setAcct] = useState<AccountView | null | undefined>(undefined);
+  const [domains, setDomains] = useState<{ domain: string; count: number }[]>([]);
+  const [activeDomain, setActiveDomain] = useState("");
+  const [newDomain, setNewDomain] = useState("");
+  const [loadingCfg, setLoadingCfg] = useState(false);
   const [socials, setSocials] = useState<Record<string, string>>({});
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [sponsors, setSponsors] = useState<LinkRow[]>([]);
@@ -267,16 +272,14 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [bgRgba, setBgRgba] = useState("");
   const [text, setText] = useState<Record<string, string>>({ brand: "", headline: "", tagline: "", sub: "" });
   const [wallet, setWallet] = useState("");
-  const [domain, setDomain] = useState("");
   const [repo, setRepo] = useState("");
   const [assetPattern, setAssetPattern] = useState("");
   const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
   const [blocks, setBlocks] = useState<BlockRow[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const hydrate = (a: AccountView) => {
-    const c = a.config || {};
-    setDomain(a.domain || "");
+  const hydrateConfig = (c: any) => {
+    c = c || {};
     setRepo(c.repo || "");
     setAssetPattern(c.assetPattern || "");
     setAssets(c.assets || []);
@@ -290,26 +293,68 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     setFgRgba(c.fgRgba || "");
     setBgRgba(c.bgRgba || "");
     setText({ brand: c.brand || "", headline: c.headline || "", tagline: c.tagline || "", sub: c.sub || "" });
-    setWallet(a.payout_wallet || "");
+  };
+
+  const loadDomain = async (dn: string) => {
+    setActiveDomain(dn);
+    setLoadingCfg(true);
+    try {
+      const r = await fetch(`/api/tenant?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      hydrateConfig(d.config || {});
+    } catch (e: any) { onError(e.message || "Couldn't load."); hydrateConfig({}); }
+    finally { setLoadingCfg(false); }
   };
 
   useEffect(() => {
     fetch("/api/account").then((r) => r.json()).then((d) => {
       setAcct(d.account);
-      if (d.account) hydrate(d.account);
+      setDomains(d.parkedDomains || []);
+      setWallet(d.account?.payout_wallet || "");
+      const first = d.parkedDomains?.[0]?.domain || d.account?.domain || "";
+      if (first) loadDomain(first);
     }).catch(() => setAcct(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (acct === undefined || acct === null) return null;
+  if (acct === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (acct === null) return null;
+
+  const addDomain = async () => {
+    const dn = newDomain.trim();
+    if (!dn) return;
+    try {
+      const r = await fetch("/api/tenant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ addDomain: dn }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDomains(d.domains || []);
+      setNewDomain("");
+      onOk("Domain added.");
+      loadDomain(d.dn);
+    } catch (e: any) { onError(e.message || "Couldn't add domain."); }
+  };
+
+  const removeDomain = async (dn: string) => {
+    if (!window.confirm(`Remove ${dn} and its page?`)) return;
+    try {
+      const r = await fetch(`/api/tenant?dn=${encodeURIComponent(dn)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDomains(d.domains || []);
+      onOk("Domain removed.");
+      const next = (d.domains || [])[0]?.domain || "";
+      if (next) loadDomain(next); else { setActiveDomain(""); hydrateConfig({}); }
+    } catch (e: any) { onError(e.message || "Couldn't remove."); }
+  };
 
   const save = async () => {
+    if (!activeDomain) { onError("Add a domain first."); return; }
     setSaving(true);
     try {
-      const res = await fetch("/api/account", {
+      const res = await fetch(`/api/tenant?dn=${encodeURIComponent(activeDomain)}`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          domain: domain.trim(),
-          payoutWallet: wallet.trim(),
           config: {
             socials,
             customLinks: links.filter((l) => l.url.trim()),
@@ -328,32 +373,55 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setAcct(data.account);
-      hydrate(data.account);
+      hydrateConfig(data.config || {});
       if (data.warning) onError(data.warning);
-      else onOk(acct.status === "active" ? "Saved & published to your page. 🤘" : "Saved.");
+      else onOk(`Saved & published to ${activeDomain}. 🤘`);
     } catch (e: any) { onError(e.message || "Couldn't save."); }
     finally { setSaving(false); }
   };
 
+  const saveWallet = async () => {
+    try {
+      const r = await fetch("/api/account", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ payoutWallet: wallet.trim() }) });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+      onOk("Payout wallet saved.");
+    } catch (e: any) { onError(e.message || "Couldn't save."); }
+  };
+
+  const pageUrl = activeDomain ? `/?dn=${encodeURIComponent(activeDomain)}` : null;
+
   return (
     <section className="card2">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>Your page — edit</h2>
-        <span className="pill">{acct.status === "active" ? `${acct.plan} · live` : "setup pending"}</span>
+        <h2>Your pages</h2>
+        <span className="pill">{acct.status === "active" ? `${acct.plan}` : "pending"}{acct.is_admin ? " · admin" : ""}</span>
+      </div>
+      <p className="sub">Each domain is its own project with its own settings. Add as many as you want.</p>
+
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${activeDomain === d.domain ? " on" : ""}`} onClick={() => loadDomain(d.domain)}>
+            {d.domain} <span className="muted">({d.count})</span>
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <input className="inp" placeholder="add a domain — e.g. moshcode.sh" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addDomain(); }} />
+        <button className="btn2" onClick={addDomain} disabled={!newDomain.trim()}>+ Add domain</button>
       </div>
 
-      {acct.status === "pending" && (
-        <p className="dash-msg err" style={{ marginTop: 0 }}>
-          Your account isn't active yet.{" "}
-          {acct.payUrl ? <a href={acct.payUrl}>Finish checkout →</a> : null}
-        </p>
-      )}
-
-      <h3 className="ed-h">Domain</h3>
-      <div className="row">
-        <input className="inp" placeholder="your-domain.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
-        {acct.pageUrl && <a className="btn2 ghost" href={acct.pageUrl} target="_blank" rel="noopener noreferrer">View ↗</a>}
+      {!activeDomain ? (
+        <p className="sub" style={{ marginTop: 14 }}>Add a domain above to set up its page.</p>
+      ) : loadingCfg ? (
+        <p className="sub" style={{ marginTop: 14 }}>Loading {activeDomain}…</p>
+      ) : (
+      <>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+        <h3 className="ed-h" style={{ margin: 0 }}>Editing {activeDomain}</h3>
+        <span className="row" style={{ gap: 8 }}>
+          {pageUrl && <a className="btn2 ghost" href={pageUrl} target="_blank" rel="noopener noreferrer">View ↗</a>}
+          <button className="btn2 ghost" onClick={() => removeDomain(activeDomain)}>Remove</button>
+        </span>
       </div>
 
       <h3 className="ed-h">Copy <span className="muted">(optional — defaults are auto-generated)</span></h3>
@@ -404,12 +472,17 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       )}
       {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN.</p>}
 
-      <h3 className="ed-h">CoinPay payout wallet</h3>
-      <div className="row"><input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} /></div>
-
       <div className="row" style={{ marginTop: 16 }}>
-        <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save & publish"}</button>
-        {acct.pageUrl && <a className="btn2 ghost" href={acct.pageUrl} target="_blank" rel="noopener noreferrer">Preview ↗</a>}
+        <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : `Save & publish ${activeDomain}`}</button>
+        {pageUrl && <a className="btn2 ghost" href={pageUrl} target="_blank" rel="noopener noreferrer">Preview ↗</a>}
+      </div>
+      </>
+      )}
+
+      <h3 className="ed-h">CoinPay payout wallet <span className="muted">(account-wide)</span></h3>
+      <div className="row">
+        <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
+        <button className="btn2 ghost" onClick={saveWallet}>Save wallet</button>
       </div>
     </section>
   );

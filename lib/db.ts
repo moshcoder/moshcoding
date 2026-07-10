@@ -548,6 +548,14 @@ export async function listParkedDomains(accountId: string): Promise<ParkedDomain
   }));
 }
 
+/** Removes a parked domain (and its tenant page) from an account. */
+export async function removeParkedDomain(accountId: string, domain: string): Promise<void> {
+  await ensureSchema();
+  const dn = domain.trim().toLowerCase();
+  await db().execute({ sql: `DELETE FROM parked_domains WHERE account_id = ? AND domain = ?`, args: [accountId, dn] });
+  await db().execute({ sql: `DELETE FROM tenants WHERE account_id = ? AND domain = ?`, args: [accountId, dn] });
+}
+
 export async function ownsParkedDomain(accountId: string, domain: string): Promise<boolean> {
   await ensureSchema();
   const res = await db().execute({
