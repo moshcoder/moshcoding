@@ -728,12 +728,15 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
               <p className="sub" style={{ margin: "10px 0 6px" }}>Add these records at your registrar (all of them — the TXT rows verify ownership):</p>
               <ul className="list">
                 {d.records.map((rec: any, i: number) => (
-                  <li key={i} style={{ alignItems: "center" }}>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}>
-                      <b>{rec.type}</b>{"  "}<span className="muted">host</span> {rec.host}{"  →  "}{rec.value}{" "}
+                  <li key={i} style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <b>{rec.type}</b>
+                      <span className="muted">host</span> {rec.host}
+                      <button className="btn2 ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => copyText(rec.host).then((ok) => onOk(ok ? "Copied host. 🤘" : "Copy failed — select it."))}>Copy</button>
+                      <span className="muted">value</span> {rec.value}
+                      <button className="btn2 ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => copyText(rec.value).then((ok) => onOk(ok ? "Copied value. 🤘" : "Copy failed — select it."))}>Copy</button>
                       <span style={{ opacity: 0.6 }}>({rec.status})</span>
                     </span>
-                    <button className="btn2 ghost" onClick={() => copyText(rec.value).then((ok) => onOk(ok ? "Copied. 🤘" : "Copy failed — select it."))}>Copy</button>
                   </li>
                 ))}
               </ul>
