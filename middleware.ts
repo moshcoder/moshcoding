@@ -49,7 +49,14 @@ export function middleware(req: NextRequest) {
         maxAge: 60 * 60 * 24 * 90,
         path: "/",
         sameSite: "lax",
-        secure: (process.env.APP_BASE_URL || "").startsWith("https://"),
+        httpOnly: true,
+        // When deployed behind TLS terminators (Vercel, Cloudflare, Railway,
+        // nginx), Node sees req.url as http:// even when external is https://,
+        // so APP_BASE_URL alone drops the secure cookie.
+        secure:
+          (process.env.APP_BASE_URL || "").startsWith("https://") ||
+          process.env.NODE_ENV === "production" ||
+          req.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https",
       });
     }
   }
