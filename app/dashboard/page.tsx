@@ -41,11 +41,8 @@ export default function Dashboard() {
   }, [teamOrg, projTeam]);
 
   useEffect(() => {
-    fetch("/api/me").then((r) => r.json()).then((m) => {
-      setMe(m);
-      if (m.user) refresh().catch((e) => say(e.message, false));
-    });
-  }, [refresh]);
+    fetch("/api/me").then((r) => r.json()).then((m) => setMe(m)).catch(() => setMe(null));
+  }, []);
 
   const wrap = (fn: () => Promise<any>) => async () => {
     try { await fn(); await refresh(); } catch (e: any) { say(e.message, false); }
@@ -86,7 +83,7 @@ export default function Dashboard() {
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
 
       <div className="tabs">
-        <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
+        <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>Domains</button>
         <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
@@ -102,74 +99,7 @@ export default function Dashboard() {
       ) : tab === "waitlist" ? (
         <WaitlistPanel onError={(m) => say(m, false)} />
       ) : (
-      <>
-      <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
-
-      <section className="card2">
-        <h2>Organizations</h2>
-        <div className="row">
-          <input className="inp" placeholder="New org name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
-          <button className="btn2" disabled={!orgName.trim()} onClick={wrap(async () => { await api("/api/orgs", "POST", { name: orgName.trim() }); setOrgName(""); say("Org created."); })}>Create org</button>
-        </div>
-        <ul className="list">{orgs.map((o) => (
-          <li key={o.id}>
-            <span>{o.name}</span>
-            <span className="row-actions">
-              <button className="btn2 ghost" onClick={rename("orgs", o.id, o.name)}>Rename</button>
-              <button className="btn2 ghost" onClick={remove("orgs", o.id, `Delete org “${o.name}” and ALL its teams, projects & webhooks? This can't be undone.`)}>Delete</button>
-            </span>
-          </li>
-        ))}</ul>
-      </section>
-
-      <section className="card2">
-        <h2>Teams</h2>
-        <div className="row">
-          <input className="inp" placeholder="New team name" value={teamName} onChange={(e) => setTeamName(e.target.value)} />
-          <select className="inp sel" value={teamOrg} onChange={(e) => setTeamOrg(e.target.value)}>
-            {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
-          <button className="btn2" disabled={!teamName.trim() || !teamOrg} onClick={wrap(async () => { await api("/api/teams", "POST", { name: teamName.trim(), org_id: teamOrg }); setTeamName(""); say("Team created."); })}>Create team</button>
-        </div>
-        <ul className="list">{teams.map((t) => (
-          <li key={t.id}>
-            <span>{t.name} <span className="muted">· {t.org_name}</span></span>
-            <span className="row-actions">
-              <span className="pill">{t.role}</span>
-              <button className="btn2 ghost" onClick={rename("teams", t.id, t.name)}>Rename</button>
-              <button className="btn2 ghost" onClick={remove("teams", t.id, `Delete team “${t.name}” and its projects & webhooks?`)}>Delete</button>
-            </span>
-          </li>
-        ))}</ul>
-      </section>
-
-      <section className="card2">
-        <h2>Projects</h2>
-        <div className="row">
-          <input className="inp" placeholder="New project name" value={projName} onChange={(e) => setProjName(e.target.value)} />
-          <select className="inp sel" value={projTeam} onChange={(e) => setProjTeam(e.target.value)}>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <button className="btn2" disabled={!projName.trim() || !projTeam} onClick={wrap(async () => { await api("/api/projects", "POST", { name: projName.trim(), team_id: projTeam }); setProjName(""); say("Project created."); })}>Create project</button>
-        </div>
-        <ul className="list">{projects.map((p) => (
-          <li key={p.id}>
-            <span>{p.name} <span className="muted">· {p.team_name}</span></span>
-            <span className="row-actions">
-              <button className="btn2 ghost" onClick={rename("projects", p.id, p.name)}>Rename</button>
-              <button className="btn2 ghost" onClick={remove("projects", p.id, `Delete project “${p.name}” and its webhooks?`)}>Delete</button>
-            </span>
-          </li>
-        ))}</ul>
-      </section>
-
-      {projects.map((p) => <ProjectWebhooks key={p.id} project={p} onError={(m) => say(m, false)} />)}
-
-      <section className="card2">
-        <h2>Invite a teammate</h2>
-        <InviteForm teams={teams} onDone={(m, ok) => say(m, ok)} />
-      </section>
-      </>
+        <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       )}
     </div>
   );
@@ -393,7 +323,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   return (
     <section className="card2">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>Your pages</h2>
+        <h2>Domains</h2>
         <span className="pill">{acct.status === "active" ? `${acct.plan}` : "pending"}{acct.is_admin ? " · admin" : ""}</span>
       </div>
       <p className="sub">Each domain is its own project with its own settings. Add as many as you want.</p>
@@ -513,7 +443,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
 
   if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   if (!domains.length) {
-    return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab and its waitlist shows up here.</p></section>;
+    return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab and its waitlist shows up here.</p></section>;
   }
 
   return (
@@ -592,7 +522,7 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
 
   if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   if (!domains.length) {
-    return <section className="card2"><h2>Webhooks</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab to get hosted webhooks.</p></section>;
+    return <section className="card2"><h2>Webhooks</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab to get hosted webhooks.</p></section>;
   }
 
   return (
@@ -707,7 +637,7 @@ function AuctionsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: 
 
   if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   if (!domains.length) {
-    return <section className="card2"><h2>Auctions</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab, then set a reserve/buy-now and collect bids here.</p></section>;
+    return <section className="card2"><h2>Auctions</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab, then set a reserve/buy-now and collect bids here.</p></section>;
   }
 
   const closed = data?.status === "closed";
