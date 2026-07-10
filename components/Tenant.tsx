@@ -1,8 +1,10 @@
 import type { TenantConfig } from "@/lib/config";
 import WaitlistForm from "./WaitlistForm";
+import AffiliateJoin from "./AffiliateJoin";
 import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
 import CrawlProofAd from "./CrawlProofAd";
+import CodeCopy from "./CodeCopy";
 import { renderMarkdown } from "@/lib/markdown";
 
 export default function Tenant({ cfg }: { cfg: TenantConfig }) {
@@ -53,6 +55,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
             {cfg.blocks.map((b) => (
               <div key={b.id} className="t-block" dangerouslySetInnerHTML={{ __html: renderMarkdown(b.content) }} />
             ))}
+            <CodeCopy />
           </div>
         )}
 
@@ -85,17 +88,33 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           </nav>
         )}
 
-        {cfg.assets.length > 0 && (
-          <div className="t-assets" aria-label="Assets">
-            {cfg.assets.map((a, i) => (
-              <a key={i} className="t-asset" href={a.url} target="_blank" rel="noopener noreferrer" title={a.label}>
-                <img src={a.url} alt={a.label} loading="lazy" />
-              </a>
+        {cfg.videos.length > 0 && (
+          <div id="videos" className="t-videos" aria-label="Videos">
+            {cfg.videos.map((v, i) => (
+              <video key={i} className="t-video" controls preload="metadata" playsInline src={v.url} poster={v.poster || undefined} />
             ))}
           </div>
         )}
 
-        <a className="t-bid" href={`/?bid=${encodeURIComponent(cfg.dn)}`}>💰 Bid on this domain</a>
+        {cfg.assets.length > 0 && (
+          <div className="t-assets" aria-label="Assets">
+            {cfg.assets.map((a, i) =>
+              a.kind === "video" ? (
+                <video key={i} className="t-asset t-asset-av" controls preload="metadata" playsInline src={a.url} title={a.label} />
+              ) : a.kind === "audio" ? (
+                <audio key={i} className="t-asset t-asset-audio" controls preload="none" src={a.url} title={a.label} />
+              ) : (
+                <a key={i} className="t-asset" href={a.url} target="_blank" rel="noopener noreferrer" title={a.label}>
+                  <img src={a.url} alt={a.label} loading="lazy" />
+                </a>
+              ),
+            )}
+          </div>
+        )}
+
+        <AffiliateJoin dn={cfg.dn} />
+
+        <a className="t-bid" href={`https://${cfg.dn}/?bid=${encodeURIComponent(cfg.dn)}`} target="_top" rel="noopener">💰 Bid on this domain</a>
 
         {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 

@@ -17,6 +17,63 @@ function safeUrl(raw: string): string | null {
   return null;
 }
 
+// ---- lightweight syntax highlighting (bun.sh-ish) --------------------------
+// Tokenizes, then escapes each token — so highlighted code is still XSS-safe.
+const JS_KW = new Set([
+  "const", "let", "var", "function", "return", "if", "else", "for", "while", "do", "switch", "case",
+  "break", "continue", "new", "class", "extends", "import", "from", "export", "default", "async",
+  "await", "try", "catch", "finally", "throw", "typeof", "instanceof", "in", "of", "this", "super",
+  "yield", "void", "delete", "null", "undefined", "true", "false", "type", "interface", "enum",
+  "implements", "public", "private", "readonly", "static", "as", "keyof", "namespace",
+]);
+
+function highlightJS(code: string): string {
+  const re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:[^`\\]|\\.)*`|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)/g;
+  let out = "", last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    if (m.index > last) out += escapeHtml(code.slice(last, m.index));
+    if (m[1]) out += `<span class="tk-c">${escapeHtml(m[1])}</span>`;
+    else if (m[2]) out += `<span class="tk-s">${escapeHtml(m[2])}</span>`;
+    else if (m[3]) out += `<span class="tk-n">${escapeHtml(m[3])}</span>`;
+    else {
+      const w = m[4];
+      if (JS_KW.has(w)) out += `<span class="tk-k">${escapeHtml(w)}</span>`;
+      else if (/^\s*\(/.test(code.slice(re.lastIndex))) out += `<span class="tk-f">${escapeHtml(w)}</span>`;
+      else out += escapeHtml(w);
+    }
+    last = re.lastIndex;
+  }
+  if (last < code.length) out += escapeHtml(code.slice(last));
+  return out;
+}
+
+function highlightSh(code: string): string {
+  const re = /(#[^\n]*)|("(?:[^"\\]|\\.)*"|'[^']*')|(\$\w+|\$\{[^}]*\})|(-{1,2}[A-Za-z0-9][\w-]*)/g;
+  let out = "", last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    if (m.index > last) out += escapeHtml(code.slice(last, m.index));
+    if (m[1]) out += `<span class="tk-c">${escapeHtml(m[1])}</span>`;
+    else if (m[2]) out += `<span class="tk-s">${escapeHtml(m[2])}</span>`;
+    else if (m[3]) out += `<span class="tk-v">${escapeHtml(m[3])}</span>`;
+    else out += `<span class="tk-flag">${escapeHtml(m[4])}</span>`;
+    last = re.lastIndex;
+  }
+  if (last < code.length) out += escapeHtml(code.slice(last));
+  return out;
+}
+
+/** Highlights a code block by language, or escapes it plainly. Returns HTML. */
+function highlightCode(code: string, lang: string): string {
+  switch (lang) {
+    case "js": case "jsx": case "javascript": case "ts": case "tsx": case "typescript": case "json":
+      return highlightJS(code);
+    case "sh": case "bash": case "shell": case "zsh": case "console":
+      return highlightSh(code);
+    default:
+      return escapeHtml(code);
+  }
+}
+
 /** Inline: operates on ALREADY-escaped text; emits only safe tags. */
 function inline(escaped: string): string {
   let s = escaped;
@@ -56,7 +113,11 @@ export function renderMarkdown(md: string): string {
       i++;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) { body.push(lines[i]); i++; }
       i++; // consume closing fence
-      out.push(`<pre><code>${escapeHtml(body.join("\n"))}</code></pre>`);
+      const lang = (fence[1] || "").toLowerCase();
+      out.push(
+        `<div class="code-wrap"><pre class="hl" data-lang="${escapeHtml(lang || "text")}">` +
+        `<code>${highlightCode(body.join("\n"), lang)}</code></pre></div>`,
+      );
       continue;
     }
 

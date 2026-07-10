@@ -20,6 +20,8 @@ export type TenantConfig = {
   hashtags: string[];
   /** Image assets pulled from a connected GitHub repo, rendered as a gallery. */
   assets: TenantLink[];
+  /** Uploaded MP4 videos ({name, url, poster?}), rendered in the #videos section. */
+  videos: { name: string; url: string; poster?: string }[];
   /** Genres from ?style=metal,punk — drives the AI hero-image generation. */
   styles: string[];
   /** Optional background accent (rgba) from ?bg_rgba=; null = use the theme default. */
@@ -122,7 +124,14 @@ export function coerceRgba(v: unknown): string | null {
 
 export function safeDomain(dn: unknown): string | null {
   if (typeof dn !== "string") return null;
-  const d = dn.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  // Strip a path/query/hash too: Porkbun param-forwarding can append the
+  // visitor's query onto our ?dn=<domain> target (e.g. "moshscript.com?ref=abc"),
+  // and we still want the bare domain to resolve the tenant.
+  const d = dn
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/[/?#&].*$/, "");
   if (!/^[a-z0-9.-]{3,253}$/.test(d) || !d.includes(".") || d.includes("..")) return null;
   return d;
 }
@@ -392,9 +401,22 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams), ...cleanLinks(ov.customLinks, "link")];
   // Sponsors: ?aff_linkN= query + saved sponsors.
   const sponsors = [...parseSponsors(opts.affParams), ...cleanLinks(ov.sponsors, "sponsor")];
-  // GitHub repo image assets (saved with {name,url}); rendered as a gallery.
+  // GitHub repo media assets (images/video/audio, {name,url,kind}); a gallery.
+  const assetKinds = new Set(["image", "video", "audio"]);
   const assets = Array.isArray(ov.assets)
-    ? ov.assets.filter((a: any) => a && a.url).map((a: any) => ({ label: String(a.name || a.label || ""), url: String(a.url), kind: "image" }))
+    ? ov.assets.filter((a: any) => a && a.url).map((a: any) => ({
+        label: String(a.name || a.label || ""),
+        url: String(a.url),
+        kind: assetKinds.has(a.kind) ? String(a.kind) : "image",
+      }))
+    : [];
+  // Uploaded MP4 videos ({name, url, poster?}).
+  const videos = Array.isArray(ov.videos)
+    ? ov.videos.filter((v: any) => v && v.url).map((v: any) => ({
+        name: String(v.name || "video"),
+        url: String(v.url),
+        ...(v.poster ? { poster: String(v.poster) } : {}),
+      })).slice(0, 24)
     : [];
   // Hashtags: ?hashtags= query, else saved config, else the domain slug.
   const parsedTags = parseHashtags(opts.hashtags);
@@ -421,6 +443,7 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     sponsors,
     hashtags,
     assets,
+    videos,
     styles: parseStyles(opts.style),
     // query wins, then saved config, then the default moshcoding green.
     accent: coerceRgba(opts.fgRgba) || coerceRgba(ov.fgRgba) || DEFAULT_ACCENT,

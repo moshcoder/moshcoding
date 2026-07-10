@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { copyText } from "@/lib/clipboard";
 
 type Org = { id: string; name: string };
@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -41,11 +41,8 @@ export default function Dashboard() {
   }, [teamOrg, projTeam]);
 
   useEffect(() => {
-    fetch("/api/me").then((r) => r.json()).then((m) => {
-      setMe(m);
-      if (m.user) refresh().catch((e) => say(e.message, false));
-    });
-  }, [refresh]);
+    fetch("/api/me").then((r) => r.json()).then((m) => setMe(m)).catch(() => setMe(null));
+  }, []);
 
   const wrap = (fn: () => Promise<any>) => async () => {
     try { await fn(); await refresh(); } catch (e: any) { say(e.message, false); }
@@ -86,7 +83,8 @@ export default function Dashboard() {
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
 
       <div className="tabs">
-        <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
+        <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>Domains</button>
+        <button className={`tab${tab === "videos" ? " on" : ""}`} onClick={() => setTab("videos")}>Videos</button>
         <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
@@ -99,77 +97,12 @@ export default function Dashboard() {
         <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "auctions" ? (
         <AuctionsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "videos" ? (
+        <VideosPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "waitlist" ? (
         <WaitlistPanel onError={(m) => say(m, false)} />
       ) : (
-      <>
-      <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
-
-      <section className="card2">
-        <h2>Organizations</h2>
-        <div className="row">
-          <input className="inp" placeholder="New org name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
-          <button className="btn2" disabled={!orgName.trim()} onClick={wrap(async () => { await api("/api/orgs", "POST", { name: orgName.trim() }); setOrgName(""); say("Org created."); })}>Create org</button>
-        </div>
-        <ul className="list">{orgs.map((o) => (
-          <li key={o.id}>
-            <span>{o.name}</span>
-            <span className="row-actions">
-              <button className="btn2 ghost" onClick={rename("orgs", o.id, o.name)}>Rename</button>
-              <button className="btn2 ghost" onClick={remove("orgs", o.id, `Delete org “${o.name}” and ALL its teams, projects & webhooks? This can't be undone.`)}>Delete</button>
-            </span>
-          </li>
-        ))}</ul>
-      </section>
-
-      <section className="card2">
-        <h2>Teams</h2>
-        <div className="row">
-          <input className="inp" placeholder="New team name" value={teamName} onChange={(e) => setTeamName(e.target.value)} />
-          <select className="inp sel" value={teamOrg} onChange={(e) => setTeamOrg(e.target.value)}>
-            {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
-          <button className="btn2" disabled={!teamName.trim() || !teamOrg} onClick={wrap(async () => { await api("/api/teams", "POST", { name: teamName.trim(), org_id: teamOrg }); setTeamName(""); say("Team created."); })}>Create team</button>
-        </div>
-        <ul className="list">{teams.map((t) => (
-          <li key={t.id}>
-            <span>{t.name} <span className="muted">· {t.org_name}</span></span>
-            <span className="row-actions">
-              <span className="pill">{t.role}</span>
-              <button className="btn2 ghost" onClick={rename("teams", t.id, t.name)}>Rename</button>
-              <button className="btn2 ghost" onClick={remove("teams", t.id, `Delete team “${t.name}” and its projects & webhooks?`)}>Delete</button>
-            </span>
-          </li>
-        ))}</ul>
-      </section>
-
-      <section className="card2">
-        <h2>Projects</h2>
-        <div className="row">
-          <input className="inp" placeholder="New project name" value={projName} onChange={(e) => setProjName(e.target.value)} />
-          <select className="inp sel" value={projTeam} onChange={(e) => setProjTeam(e.target.value)}>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <button className="btn2" disabled={!projName.trim() || !projTeam} onClick={wrap(async () => { await api("/api/projects", "POST", { name: projName.trim(), team_id: projTeam }); setProjName(""); say("Project created."); })}>Create project</button>
-        </div>
-        <ul className="list">{projects.map((p) => (
-          <li key={p.id}>
-            <span>{p.name} <span className="muted">· {p.team_name}</span></span>
-            <span className="row-actions">
-              <button className="btn2 ghost" onClick={rename("projects", p.id, p.name)}>Rename</button>
-              <button className="btn2 ghost" onClick={remove("projects", p.id, `Delete project “${p.name}” and its webhooks?`)}>Delete</button>
-            </span>
-          </li>
-        ))}</ul>
-      </section>
-
-      {projects.map((p) => <ProjectWebhooks key={p.id} project={p} onError={(m) => say(m, false)} />)}
-
-      <section className="card2">
-        <h2>Invite a teammate</h2>
-        <InviteForm teams={teams} onDone={(m, ok) => say(m, ok)} />
-      </section>
-      </>
+        <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       )}
     </div>
   );
@@ -274,7 +207,10 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [wallet, setWallet] = useState("");
   const [repo, setRepo] = useState("");
   const [assetPattern, setAssetPattern] = useState("");
-  const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
+  const [assets, setAssets] = useState<{ label: string; url: string; kind?: string }[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [videos, setVideos] = useState<{ name: string; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [blocks, setBlocks] = useState<BlockRow[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -283,6 +219,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     setRepo(c.repo || "");
     setAssetPattern(c.assetPattern || "");
     setAssets(c.assets || []);
+    setVideos(Array.isArray(c.videos) ? c.videos : []);
     setBlocks(Array.isArray(c.blocks) ? c.blocks : []);
     setSocials(c.socials || {});
     setLinks(c.customLinks || []);
@@ -366,6 +303,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
             bgRgba: bgRgba.trim(),
             repo: repo.trim(),
             assetPattern: assetPattern.trim(),
+            videos,
             blocks: blocks.map((b) => ({ ...b, content: b.content })),
             ...text,
           },
@@ -388,12 +326,37 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     } catch (e: any) { onError(e.message || "Couldn't save."); }
   };
 
+  const uploadVideo = async (file: File | undefined) => {
+    if (!file || !activeDomain) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`/api/upload?dn=${encodeURIComponent(activeDomain)}`, { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setVideos(d.videos || []);
+      onOk("Video uploaded & published. 🤘");
+    } catch (e: any) { onError(e.message || "Upload failed."); }
+    finally { setUploading(false); }
+  };
+  const deleteVideo = async (url: string) => {
+    if (!activeDomain) return;
+    try {
+      const r = await fetch(`/api/upload?dn=${encodeURIComponent(activeDomain)}&url=${encodeURIComponent(url)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setVideos(d.videos || []);
+      onOk("Video removed.");
+    } catch (e: any) { onError(e.message || "Couldn't remove."); }
+  };
+
   const pageUrl = activeDomain ? `/?dn=${encodeURIComponent(activeDomain)}` : null;
 
   return (
     <section className="card2">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>Your pages</h2>
+        <h2>Domains</h2>
         <span className="pill">{acct.status === "active" ? `${acct.plan}` : "pending"}{acct.is_admin ? " · admin" : ""}</span>
       </div>
       <p className="sub">Each domain is its own project with its own settings. Add as many as you want.</p>
@@ -462,15 +425,48 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <input className="inp" placeholder="background (bg_rgba)" value={bgRgba} onChange={(e) => setBgRgba(e.target.value)} />
       </div>
 
-      <h3 className="ed-h">GitHub assets <span className="muted">(pull images from a repo onto your page)</span></h3>
+      <h3 className="ed-h">Videos <span className="muted">(upload MP4s → shown in the #videos section, 100 MB max)</span></h3>
+      <div className="row">
+        <input className="inp" type="file" accept="video/mp4,.mp4" disabled={uploading} onChange={(e) => { uploadVideo(e.target.files?.[0]); e.target.value = ""; }} />
+        {uploading && <span className="muted">Uploading…</span>}
+      </div>
+      <ul className="list">
+        {videos.length === 0 && <li className="muted">No videos yet.</li>}
+        {videos.map((v) => (
+          <li key={v.url}>
+            <span><a href={v.url} target="_blank" rel="noopener noreferrer">{v.name}</a></span>
+            <button className="btn2 ghost" onClick={() => deleteVideo(v.url)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+
+      <h3 className="ed-h">GitHub media <span className="muted">(pull images, video &amp; audio from a repo onto your page)</span></h3>
       <div className="row"><input className="inp" placeholder="owner/repo — e.g. moshcoder/moshcoding" value={repo} onChange={(e) => setRepo(e.target.value)} /></div>
-      <div className="row"><input className="inp" placeholder="path glob — e.g. images/*_thumb.png" value={assetPattern} onChange={(e) => setAssetPattern(e.target.value)} /></div>
+      <div className="row">
+        <input className="inp" placeholder="path glob — e.g. media/*  (blank = all media)" value={assetPattern} onChange={(e) => setAssetPattern(e.target.value)} />
+        <button className="btn2 ghost" type="button" disabled={refreshing || !repo.trim()} onClick={async () => {
+          setRefreshing(true);
+          try {
+            const r = await fetch("/api/account/refresh-media", { method: "POST" });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || "Refresh failed.");
+            setAssets(d.assets || []);
+            const c = d.counts || {};
+            onOk(`Refreshed ${d.total} — ${c.image || 0} image, ${c.video || 0} video, ${c.audio || 0} audio. 🤘`);
+          } catch (e: any) { onError(e.message || "Refresh failed."); }
+          finally { setRefreshing(false); }
+        }}>{refreshing ? "Refreshing…" : "↻ Refresh media"}</button>
+      </div>
       {assets.length > 0 && (
         <div className="t-assets" style={{ margin: "10px 0 0" }}>
-          {assets.slice(0, 12).map((a, i) => <span key={i} className="t-asset"><img src={a.url} alt={a.label} loading="lazy" /></span>)}
+          {assets.slice(0, 12).map((a: any, i: number) =>
+            a.kind === "video" ? <span key={i} className="t-asset t-asset-chip">🎬 {a.label || "video"}</span>
+            : a.kind === "audio" ? <span key={i} className="t-asset t-asset-chip">🎧 {a.label || "audio"}</span>
+            : <span key={i} className="t-asset"><img src={a.url} alt={a.label} loading="lazy" /></span>,
+          )}
         </div>
       )}
-      {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN.</p>}
+      {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN. Use <b>↻ Refresh media</b> to re-pull without saving the rest of the form.</p>}
 
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : `Save & publish ${activeDomain}`}</button>
@@ -484,6 +480,115 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
         <button className="btn2 ghost" onClick={saveWallet}>Save wallet</button>
       </div>
+    </section>
+  );
+}
+
+function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [reels, setReels] = useState<any[] | null>(null);
+  const [title, setTitle] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const load = async (dn: string) => {
+    setActive(dn); setReels(null);
+    try {
+      const r = await fetch(`/api/media?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setReels(d.media || []);
+    } catch (e: any) { onError(e.message || "Failed to load."); setReels([]); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      const list = [...(d.parkedDomains || [])];
+      // Admins can also populate the public moshcoding.com /videos gallery.
+      if (d.account?.is_admin && !list.some((x: any) => x.domain === "moshcoding.com")) {
+        list.unshift({ domain: "moshcoding.com" });
+      }
+      setDomains(list);
+      if (list[0]) load(list[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const upload = async () => {
+    if (!active || !file) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("dn", active);
+      fd.append("file", file);
+      if (title.trim()) fd.append("title", title.trim());
+      const r = await fetch("/api/media", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("Reel uploaded. 🤘");
+      setTitle(""); setFile(null);
+      if (inputRef.current) inputRef.current.value = "";
+      await load(active);
+    } catch (e: any) { onError(e.message || "Upload failed."); } finally { setBusy(false); }
+  };
+
+  const del = async (id: string) => {
+    if (typeof window !== "undefined" && !window.confirm("Delete this reel?")) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/media/${id}`, { method: "DELETE" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Delete failed.");
+      onOk("Deleted.");
+      if (active) await load(active);
+    } catch (e: any) { onError(e.message || "Delete failed."); } finally { setBusy(false); }
+  };
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Videos</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab and you can upload reels for it here.</p></section>;
+  }
+
+  return (
+    <section className="card2">
+      <h2>Videos</h2>
+      <p className="sub">Upload mp4 reels per parked domain. Reels for moshcoding.com also show on the public <a href="/videos">/videos</a> gallery.</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>{d.domain}</button>
+        ))}
+      </div>
+      {active && (
+        <>
+          <h3 className="ed-h">Upload a reel <span className="muted">(mp4 / webm / mov, max 100 MB)</span></h3>
+          <div className="row"><input className="inp" placeholder="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+          <div className="row">
+            <input ref={inputRef} className="inp" type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <button className="btn2" disabled={busy || !file} onClick={upload}>{busy ? "Uploading…" : "Upload"}</button>
+          </div>
+
+          <h3 className="ed-h" style={{ marginTop: 18 }}>Reels ({reels ? reels.length : "…"})</h3>
+          {reels === null ? (
+            <p className="sub">Loading…</p>
+          ) : reels.length === 0 ? (
+            <p className="sub">No reels yet — upload one above.</p>
+          ) : (
+            <div className="video-grid">
+              {reels.map((m) => (
+                <figure key={m.id} className="video-cell">
+                  <video src={m.url} poster={m.thumb || undefined} controls preload="metadata" playsInline />
+                  <figcaption className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{m.title}</span>
+                    <button className="btn2 ghost" disabled={busy} onClick={() => del(m.id)}>Delete</button>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -513,7 +618,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
 
   if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   if (!domains.length) {
-    return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab and its waitlist shows up here.</p></section>;
+    return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab and its waitlist shows up here.</p></section>;
   }
 
   return (
@@ -592,7 +697,7 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
 
   if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   if (!domains.length) {
-    return <section className="card2"><h2>Webhooks</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab to get hosted webhooks.</p></section>;
+    return <section className="card2"><h2>Webhooks</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab to get hosted webhooks.</p></section>;
   }
 
   return (
@@ -707,7 +812,7 @@ function AuctionsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: 
 
   if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   if (!domains.length) {
-    return <section className="card2"><h2>Auctions</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab, then set a reserve/buy-now and collect bids here.</p></section>;
+    return <section className="card2"><h2>Auctions</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab, then set a reserve/buy-now and collect bids here.</p></section>;
   }
 
   const closed = data?.status === "closed";

@@ -71,5 +71,23 @@ export function sanitizeTenantConfig(body: any): Record<string, any> {
 
   const blocks = cleanBlocks(body?.blocks);
   if (blocks.length) c.blocks = blocks;
+
+  // Uploaded MP4 videos ({name, url}). url is a same-origin /api/media/ path
+  // (or an http(s) URL); passed through so a config save doesn't wipe uploads.
+  if (Array.isArray(body?.videos)) {
+    const okUrl = (u: string) => /^\/api\/media\/[A-Za-z0-9._\-\/]+$/.test(u) || normalizeUrl(u) === u;
+    const videos = body.videos
+      .slice(0, 24)
+      .map((v: any) => {
+        const url = String(v?.url || "").trim();
+        if (!okUrl(url)) return null;
+        const entry: { name: string; url: string; poster?: string } = { name: String(v?.name || "video").slice(0, 120), url };
+        const poster = String(v?.poster || "").trim();
+        if (poster && okUrl(poster)) entry.poster = poster;
+        return entry;
+      })
+      .filter(Boolean);
+    if (videos.length) c.videos = videos;
+  }
   return c;
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { getAccountById, updateAccountProfile, updateAccountConfig, findOrCreateAccountByEmail, setAccountDomain, listParkedDomains } from "@/lib/db";
+import { getAccountById, updateAccountProfile, updateAccountConfig, setAccountDomain, listParkedDomains } from "@/lib/db";
+import { resolveAccountId } from "@/lib/api";
 import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain } from "@/lib/config";
 import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
@@ -11,16 +11,6 @@ export const dynamic = "force-dynamic";
 
 const PLATFORMS = ["x", "bluesky", "instagram", "tiktok", "github", "youtube"];
 const TEXT_FIELDS = ["brand", "headline", "tagline", "sub"] as const;
-
-/** Resolves the tenant account for the session: native (acct:) or CoinPay (by email). */
-async function resolveAccountId(req: NextRequest): Promise<string | null> {
-  if (!authConfigured()) return null;
-  const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!s) return null;
-  if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
-}
 
 function cleanWallet(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -86,7 +76,28 @@ function sanitizeConfig(body: any): Record<string, any> {
   // (escape-first) at display time, so no HTML sanitization is needed here.
   const blocks = cleanBlocks(body?.blocks);
   if (blocks.length) c.blocks = blocks;
+
+  // Uploaded videos ({name, url, poster?}) — pass through so a config save
+  // doesn't wipe uploads (they're written to the tenant config by /api/upload).
+  const videos = cleanVideos(body?.videos);
+  if (videos.length) c.videos = videos;
   return c;
+}
+
+/** Keeps uploaded-video entries: same-origin /api/media/ url + optional poster. */
+function cleanVideos(arr: unknown): { name: string; url: string; poster?: string }[] {
+  if (!Array.isArray(arr)) return [];
+  const okUrl = (u: string) => /^\/api\/media\/[A-Za-z0-9._\-/]+$/.test(u) || normalizeUrl(u) === u;
+  const out: { name: string; url: string; poster?: string }[] = [];
+  for (const v of arr.slice(0, 24)) {
+    const url = String((v as any)?.url || "").trim();
+    if (!okUrl(url)) continue;
+    const entry: { name: string; url: string; poster?: string } = { name: String((v as any)?.name || "video").slice(0, 120), url };
+    const poster = String((v as any)?.poster || "").trim();
+    if (poster && okUrl(poster)) entry.poster = poster;
+    out.push(entry);
+  }
+  return out;
 }
 
 /** Sanitizes the content-blocks array: bounded count + size, known types only. */
