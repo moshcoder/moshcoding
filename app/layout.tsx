@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Script from "next/script";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://moshcoding.com"),
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="grain" aria-hidden="true" />
         <div className="scan" aria-hidden="true" />
         {children}
+              <Script data-site="51f5ac03-7e3a-452c-9c8d-5737bbbc30a5" src="https://crawlproof.com/stats.js" strategy="afterInteractive" />
       </body>
     </html>
   );
