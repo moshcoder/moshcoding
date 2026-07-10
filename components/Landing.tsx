@@ -1,4 +1,4 @@
-import AuthSlot from "./AuthSlot";
+import Nav from "./Nav";
 import SummonDemo from "./SummonDemo";
 import WaitlistForm from "./WaitlistForm";
 import QueryHelp from "./QueryHelp";
@@ -8,16 +8,7 @@ const TICKER = ["BUILD. BREAK. REPEAT.", "NO BUGS, JUST FEATURES", "DEADLINES AR
 export default function Landing() {
   return (
     <div id="site">
-      <header className="nav">
-        <a className="wm" href="/">#MOSH<span>CODING</span></a>
-        <nav>
-          <a href="#chaos">The one-liner</a>
-          <a href="#waitlist">Waitlist</a>
-          <a href="/badges">Badges</a>
-          <a className="ghost" href="https://github.com/moshcoder/moshcoding" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <AuthSlot />
-        </nav>
-      </header>
+      <Nav />
 
       <section className="hero">
         <div className="hero-copy">
