@@ -138,11 +138,19 @@ async function recordDelivery(
 ) {
   await db().execute({
     sql: `INSERT INTO webhook_deliveries
-            (endpoint_id, event_type, payload, idempotency_key, status, attempts, response_status, last_error, delivered_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?='delivered' THEN datetime('now') END)
+            (endpoint_id, event_type, payload, idempotency_key, status, attempts, response_status, last_error, next_attempt_at, delivered_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+            CASE WHEN ?='failed' THEN datetime('now', '+30 seconds') END,
+            CASE WHEN ?='delivered' THEN datetime('now') END)
           ON CONFLICT (endpoint_id, idempotency_key) DO UPDATE SET
             status=excluded.status, attempts=webhook_deliveries.attempts+1,
-            response_status=excluded.response_status, last_error=excluded.last_error`,
-    args: [endpointId, type, body, idem, status, attempts, responseStatus, err, status],
+            response_status=excluded.response_status, last_error=excluded.last_error,
+            next_attempt_at=CASE
+              WHEN excluded.status='failed'
+                THEN datetime('now', '+' || min(1800, 30 * (1 << min(webhook_deliveries.attempts, 6))) || ' seconds')
+              ELSE NULL
+            END,
+            delivered_at=CASE WHEN excluded.status='delivered' THEN datetime('now') ELSE webhook_deliveries.delivered_at END`,
+    args: [endpointId, type, body, idem, status, attempts, responseStatus, err, status, status],
   });
 }

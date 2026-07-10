@@ -137,6 +137,7 @@ async function initSchema(): Promise<void> {
       UNIQUE (endpoint_id, idempotency_key)
     )
   `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_retry ON webhook_deliveries (status, next_attempt_at)`);
 
   // ---- webhooks: inbound config + idempotency ledger ---------------------
   await d.execute(`
