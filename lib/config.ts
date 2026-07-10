@@ -30,11 +30,22 @@ function titleize(dn: string): string {
   return base.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Normalizes a social handle: strips a leading @, spaces, and URL noise. */
+/**
+ * Normalizes a social handle. Rather than rejecting a messy value, it cleans it:
+ * a pasted profile URL collapses to its last path segment, a leading @ is
+ * dropped, and any character a handle can't contain (spaces, punctuation, …) is
+ * removed — keeping only letters, digits, dot, underscore and hyphen. Returns
+ * null only when nothing usable remains, so tenants can hand us a slightly-off
+ * handle instead of having to provide a perfectly clean one.
+ */
 function handle(v: unknown): string | null {
   if (typeof v !== "string") return null;
-  const h = v.trim().replace(/^@+/, "").replace(/\s+/g, "");
-  return /^[a-zA-Z0-9._-]{1,64}$/.test(h) ? h : null;
+  let h = v.trim();
+  if (!h) return null;
+  // Someone pasted a full profile URL — keep just the last path segment.
+  if (h.includes("/")) h = h.replace(/\/+$/, "").split("/").pop() || "";
+  h = h.replace(/^@+/, "").replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
+  return h || null;
 }
 
 /** Normalizes a fallback target to an absolute URL (bare domains get https://). */
