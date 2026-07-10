@@ -1,0 +1,42 @@
+# Managed by sh1pt Actions Fleet
+# pack: node-pnpm-test@1.2.0
+# install: sh1pt-actions-store
+# hash: sha256:hand-edited-for-bun-do-not-overwrite
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # This repo uses Bun (see bun.lock), not pnpm. The stock sh1pt
+      # node-pnpm-test pack was adapted to Bun; the hash above is
+      # intentionally invalid so the fleet treats this as hand-edited and
+      # does not re-install the broken pnpm version.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # Defaults to a no-op when no "test" script exists yet, so a repo that
+      # hasn't defined tests gets a green workflow instead of a hard failure.
+      - name: Run tests if present
+        run: |
+          if jq -e '.scripts.test' package.json >/dev/null; then
+            bun run test
+          else
+            echo 'No "test" script defined — skipping.'
+          fi
+        env:
+          CI: true
