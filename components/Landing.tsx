@@ -45,10 +45,10 @@ export default function Landing() {
         <h2>One line. A metal coming-soon page.</h2>
         <p className="lede">Point any domain at moshcoding and it gets a blacked-out, poison-green launch page with a working email waitlist. No build, no deploy.</p>
         <SummonDemo />
-        <p className="hint">
+        <div className="hint">
           Try it: <a href="/?dn=example.com">example.com</a> · <a href="/?dn=killer-startup.io">killer-startup.io</a>
           {" "}<QueryHelp />
-        </p>
+        </div>
       </section>
 
       <section id="badges" className="badges">
