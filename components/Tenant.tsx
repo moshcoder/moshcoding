@@ -1,5 +1,6 @@
 import type { TenantConfig } from "@/lib/config";
 import WaitlistForm from "./WaitlistForm";
+import AffiliateJoin from "./AffiliateJoin";
 import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
 import CrawlProofAd from "./CrawlProofAd";
@@ -104,6 +105,8 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
             ))}
           </div>
         )}
+
+        <AffiliateJoin dn={cfg.dn} />
 
         <a className="t-bid" href={`/?bid=${encodeURIComponent(cfg.dn)}`}>💰 Bid on this domain</a>
 
