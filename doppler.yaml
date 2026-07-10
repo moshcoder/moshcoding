@@ -1,0 +1,3 @@
+setup:
+  project: moshcoding
+  config: dev
