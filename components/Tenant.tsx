@@ -3,6 +3,7 @@ import WaitlistForm from "./WaitlistForm";
 import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
 import CrawlProofAd from "./CrawlProofAd";
+import CodeCopy from "./CodeCopy";
 import { renderMarkdown } from "@/lib/markdown";
 
 export default function Tenant({ cfg }: { cfg: TenantConfig }) {
@@ -53,6 +54,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
             {cfg.blocks.map((b) => (
               <div key={b.id} className="t-block" dangerouslySetInnerHTML={{ __html: renderMarkdown(b.content) }} />
             ))}
+            <CodeCopy />
           </div>
         )}
 

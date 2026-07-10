@@ -366,6 +366,30 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .badges-cta a { color: var(--acid); }
 .badges a { color: inherit; }
 
+/* Highlighted code blocks (content blocks) + copy button */
+.code-wrap { position: relative; margin: 14px 0; }
+.t-block pre.hl, .code-wrap pre.hl {
+  background: #0c0e0b; border: 1px solid var(--line); border-left: 3px solid var(--tenant-accent, var(--acid));
+  border-radius: 8px; padding: 14px 16px; margin: 0; overflow-x: auto;
+  font-family: var(--mono); font-size: 13.5px; line-height: 1.6; color: var(--bone); text-align: left;
+}
+.code-wrap pre.hl code { font-family: var(--mono); background: none; padding: 0; }
+.code-copy {
+  position: absolute; top: 8px; right: 8px; font-family: var(--mono); font-size: 11px; padding: 4px 9px;
+  border-radius: 6px; border: 1px solid var(--line); background: #141614; color: var(--ash);
+  cursor: pointer; opacity: 0; transition: opacity .15s ease, border-color .15s ease, color .15s ease;
+}
+.code-wrap:hover .code-copy, .code-copy:focus { opacity: 1; }
+.code-copy:hover { border-color: var(--tenant-accent, var(--acid)); color: var(--tenant-accent, var(--acid)); }
+/* token colors — match the hero code palette */
+.hl .tk-c { color: #6b7869; font-style: italic; }
+.hl .tk-s { color: #ffd866; }
+.hl .tk-n { color: #ffb86c; }
+.hl .tk-k { color: #ff7de9; }
+.hl .tk-f { color: var(--tenant-accent, var(--acid)); }
+.hl .tk-v { color: #78dce8; }
+.hl .tk-flag { color: #9ef01a; }
+
 /* Tenant ?code_block= snippet */
 .t-code { font-family: var(--mono); font-size: 14px; line-height: 1.6; text-align: left; color: var(--bone); background: var(--panel, #101210); border: 1px solid var(--line); border-left: 3px solid var(--tenant-accent, var(--acid)); border-radius: 8px; padding: 16px 18px; margin: 18px auto 0; max-width: 460px; width: 100%; overflow-x: auto; white-space: pre; }
 
