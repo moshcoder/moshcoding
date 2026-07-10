@@ -1,0 +1,65 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+if (( $# < 2 )); then
+  print -u2 "Usage: $0 AUDIO.m4a VIDEO.mp4 [VIDEO.mp4 ...]"
+  exit 1
+fi
+
+audio="$1"
+shift
+
+if [[ ! -f "$audio" ]]; then
+  print -u2 "Audio file not found: $audio"
+  exit 1
+fi
+
+for video in "$@"; do
+  if [[ ! -f "$video" ]]; then
+    print -u2 "Skipping missing file: $video"
+    continue
+  fi
+
+  # Use the shorter of the video duration or 30 seconds.
+  video_duration="$(
+    ffprobe -v error \
+      -show_entries format=duration \
+      -of default=noprint_wrappers=1:nokey=1 \
+      "$video"
+  )"
+
+  duration="$(
+    awk -v duration="$video_duration" 'BEGIN {
+      if (duration > 30) duration = 30
+      printf "%.3f", duration
+    }'
+  )"
+
+  # Fade only the soundtrack during its final 2 seconds.
+  fade_start="$(
+    awk -v duration="$duration" 'BEGIN {
+      start = duration - 2
+      if (start < 0) start = 0
+      printf "%.3f", start
+    }'
+  )"
+
+  output="${video:r}_with-audio.mp4"
+
+  ffmpeg -hide_banner -loglevel error -y \
+    -i "$video" \
+    -stream_loop -1 -i "$audio" \
+    -filter_complex \
+      "[1:a]atrim=duration=${duration},asetpts=PTS-STARTPTS,afade=t=out:st=${fade_start}:d=2[music]" \
+    -map 0:v:0 \
+    -map "[music]" \
+    -t "$duration" \
+    -c:v copy \
+    -c:a aac \
+    -b:a 192k \
+    -movflags +faststart \
+    "$output"
+
+  bytes=$(stat -c '%s' "$output")
+  print -r -- "$video -> $output ($bytes bytes)"
+done
