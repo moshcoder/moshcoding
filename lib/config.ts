@@ -20,8 +20,8 @@ export type TenantConfig = {
   hashtags: string[];
   /** Image assets pulled from a connected GitHub repo, rendered as a gallery. */
   assets: TenantLink[];
-  /** Uploaded MP4 videos ({name, url}), rendered in the #videos section. */
-  videos: { name: string; url: string }[];
+  /** Uploaded MP4 videos ({name, url, poster?}), rendered in the #videos section. */
+  videos: { name: string; url: string; poster?: string }[];
   /** Genres from ?style=metal,punk — drives the AI hero-image generation. */
   styles: string[];
   /** Optional background accent (rgba) from ?bg_rgba=; null = use the theme default. */
@@ -398,9 +398,13 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   const assets = Array.isArray(ov.assets)
     ? ov.assets.filter((a: any) => a && a.url).map((a: any) => ({ label: String(a.name || a.label || ""), url: String(a.url), kind: "image" }))
     : [];
-  // Uploaded MP4 videos ({name, url}).
+  // Uploaded MP4 videos ({name, url, poster?}).
   const videos = Array.isArray(ov.videos)
-    ? ov.videos.filter((v: any) => v && v.url).map((v: any) => ({ name: String(v.name || "video"), url: String(v.url) })).slice(0, 24)
+    ? ov.videos.filter((v: any) => v && v.url).map((v: any) => ({
+        name: String(v.name || "video"),
+        url: String(v.url),
+        ...(v.poster ? { poster: String(v.poster) } : {}),
+      })).slice(0, 24)
     : [];
   // Hashtags: ?hashtags= query, else saved config, else the domain slug.
   const parsedTags = parseHashtags(opts.hashtags);

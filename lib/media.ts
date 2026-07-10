@@ -83,18 +83,21 @@ function runFfmpeg(args: string[]): Promise<boolean> {
 }
 
 /**
- * Extracts a poster frame from an uploaded video into `<name>_thumb.png`
- * (640px wide, aspect preserved) using ffmpeg. Best-effort: returns false if
- * ffmpeg is missing or the clip can't be decoded — the caller must not fail the
- * upload on a false. Grabs a frame ~1s in, falling back to the first frame for
- * very short clips.
+ * Extracts a 640px poster frame from `inputPath` into `outputPath` (PNG) with
+ * ffmpeg. Best-effort: returns false if ffmpeg is missing or the clip can't be
+ * decoded — callers must not fail an upload on a false. Grabs a frame ~1s in,
+ * falling back to the first frame for very short clips. Works on any absolute
+ * paths, so it's shared by both video stores (media/ and videos/).
  */
+export async function ffmpegPoster(inputPath: string, outputPath: string): Promise<boolean> {
+  const frameAt = (t: string) =>
+    ["-y", "-ss", t, "-i", inputPath, "-frames:v", "1", "-vf", "scale=640:-2", outputPath];
+  if ((await runFfmpeg(frameAt("1"))) && fs.existsSync(outputPath)) return true;
+  return (await runFfmpeg(frameAt("0"))) && fs.existsSync(outputPath);
+}
+
+/** Poster for an uploaded media-table reel: `<name>.mp4` → `<name>_thumb.png`. */
 export async function generateThumbnail(videoFilename: string): Promise<boolean> {
   ensureDir();
-  const input = mediaPath(videoFilename);
-  const output = mediaPath(thumbFilename(videoFilename));
-  const frameAt = (t: string) =>
-    ["-y", "-ss", t, "-i", input, "-frames:v", "1", "-vf", "scale=640:-2", output];
-  if ((await runFfmpeg(frameAt("1"))) && fs.existsSync(output)) return true;
-  return (await runFfmpeg(frameAt("0"))) && fs.existsSync(output);
+  return ffmpegPoster(mediaPath(videoFilename), mediaPath(thumbFilename(videoFilename)));
 }

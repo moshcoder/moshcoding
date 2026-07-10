@@ -76,7 +76,28 @@ function sanitizeConfig(body: any): Record<string, any> {
   // (escape-first) at display time, so no HTML sanitization is needed here.
   const blocks = cleanBlocks(body?.blocks);
   if (blocks.length) c.blocks = blocks;
+
+  // Uploaded videos ({name, url, poster?}) — pass through so a config save
+  // doesn't wipe uploads (they're written to the tenant config by /api/upload).
+  const videos = cleanVideos(body?.videos);
+  if (videos.length) c.videos = videos;
   return c;
+}
+
+/** Keeps uploaded-video entries: same-origin /api/media/ url + optional poster. */
+function cleanVideos(arr: unknown): { name: string; url: string; poster?: string }[] {
+  if (!Array.isArray(arr)) return [];
+  const okUrl = (u: string) => /^\/api\/media\/[A-Za-z0-9._\-/]+$/.test(u) || normalizeUrl(u) === u;
+  const out: { name: string; url: string; poster?: string }[] = [];
+  for (const v of arr.slice(0, 24)) {
+    const url = String((v as any)?.url || "").trim();
+    if (!okUrl(url)) continue;
+    const entry: { name: string; url: string; poster?: string } = { name: String((v as any)?.name || "video").slice(0, 120), url };
+    const poster = String((v as any)?.poster || "").trim();
+    if (poster && okUrl(poster)) entry.poster = poster;
+    out.push(entry);
+  }
+  return out;
 }
 
 /** Sanitizes the content-blocks array: bounded count + size, known types only. */

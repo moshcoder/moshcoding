@@ -91,7 +91,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         {cfg.videos.length > 0 && (
           <div id="videos" className="t-videos" aria-label="Videos">
             {cfg.videos.map((v, i) => (
-              <video key={i} className="t-video" controls preload="metadata" playsInline src={v.url} />
+              <video key={i} className="t-video" controls preload="metadata" playsInline src={v.url} poster={v.poster || undefined} />
             ))}
           </div>
         )}
