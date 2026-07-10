@@ -14,6 +14,8 @@ export type TenantConfig = {
   cta: string;
   hashtag: string;
   links: TenantLink[];
+  /** Affiliate/sponsor links (?aff_link1=…), rendered under a "Sponsors" heading. */
+  sponsors: TenantLink[];
   /** Genres from ?style=metal,punk — drives the AI hero-image generation. */
   styles: string[];
 };
@@ -120,18 +122,24 @@ export type TenantOverrides = {
   style?: string | null;
   /** Raw ?link_1=&link_2=… custom-link params (arbitrary links, e.g. our apps). */
   linkParams?: Record<string, string | undefined | null>;
+  /** Raw ?aff_link1=&aff_link2=… affiliate/sponsor link params. */
+  affParams?: Record<string, string | undefined | null>;
 };
 
 /**
- * Parses ?link_1=&link_2=… custom links. Each value is either a bare/full URL
+ * Parses numbered custom-link params. Each value is either a bare/full URL
  * (label derived from the hostname) or "Label|https://url" so a tenant can name
- * the link (e.g. an app). Ordered by the numeric suffix; invalid URLs dropped.
+ * the link. Ordered by the numeric suffix; invalid URLs dropped.
  */
-export function parseLinks(raw: TenantOverrides["linkParams"]): TenantLink[] {
+function parseNumberedLinks(
+  raw: Record<string, string | undefined | null> | undefined,
+  re: RegExp,
+  kind: string,
+): TenantLink[] {
   if (!raw) return [];
   const out: Array<{ n: number; link: TenantLink }> = [];
   for (const [k, v] of Object.entries(raw)) {
-    const m = k.match(/^link_?(\d+)$/i);
+    const m = k.match(re);
     if (!m || typeof v !== "string" || !v.trim()) continue;
     let label = "";
     let target = v.trim();
@@ -140,9 +148,19 @@ export function parseLinks(raw: TenantOverrides["linkParams"]): TenantLink[] {
     const url = fallbackUrl(target);
     if (!url) continue;
     if (!label) { try { label = new URL(url).hostname.replace(/^www\./, ""); } catch { label = url; } }
-    out.push({ n: Number(m[1]), link: { label: label.slice(0, 60), url, kind: "link" } });
+    out.push({ n: Number(m[1]), link: { label: label.slice(0, 60), url, kind } });
   }
   return out.sort((a, b) => a.n - b.n).map((x) => x.link);
+}
+
+/** ?link_1=&link_2=… arbitrary links (e.g. our apps), shown in the main list. */
+export function parseLinks(raw: TenantOverrides["linkParams"]): TenantLink[] {
+  return parseNumberedLinks(raw, /^link_?(\d+)$/i, "link");
+}
+
+/** ?aff_link1=&aff_link2=… affiliate/sponsor links, shown under "Sponsors". */
+export function parseSponsors(raw: TenantOverrides["affParams"]): TenantLink[] {
+  return parseNumberedLinks(raw, /^aff_?link_?(\d+)$/i, "sponsor");
 }
 
 export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig {
@@ -206,6 +224,7 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     dn,
     hashtag: override.hashtag || (sh ? `#${sh}` : `#${slug}`),
     links,
+    sponsors: parseSponsors(opts.affParams),
     styles: parseStyles(opts.style),
   };
 }

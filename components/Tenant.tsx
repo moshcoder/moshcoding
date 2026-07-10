@@ -41,6 +41,19 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           </nav>
         )}
 
+        {cfg.sponsors.length > 0 && (
+          <nav className="links sponsors" aria-label="Sponsors">
+            <p className="sponsors-h">Sponsors</p>
+            {cfg.sponsors.map((l, i) => (
+              <a key={i} className="lt" href={l.url} target="_blank" rel="noopener noreferrer sponsored">
+                <span className="lt-i" aria-hidden="true"><LinkIcon kind={l.kind || "sponsor"} /></span>
+                <span className="lt-l">{l.label}</span>
+                <span className="lt-go" aria-hidden="true">↗</span>
+              </a>
+            ))}
+          </nav>
+        )}
+
         <footer className="t-foot">
           &copy; 2026 <a href="https://moshcoding.com" rel="noopener noreferrer">powered by moshcoding.com</a>
         </footer>
