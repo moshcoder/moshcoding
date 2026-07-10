@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { configFor, safeDomain } from "@/lib/config";
 import { getTenantConfig } from "@/lib/db";
 import Landing from "@/components/Landing";
@@ -8,6 +9,24 @@ import BidPage from "@/components/BidPage";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * The parked domain from the Host header, when the app is served DIRECTLY on a
+ * branded custom domain (not moshcoding.com / *.railway.app / localhost). Lets a
+ * domain pointed straight at this service render its own tenant page natively —
+ * no iframe, no CSP, and query params (?ref, ?bid) arrive intact. Returns null
+ * for the main app host so moshcoding.com keeps its landing page.
+ */
+async function hostTenantDn(): Promise<string | null> {
+  const h = await headers();
+  const host = (h.get("host") || "").toLowerCase().split(":")[0].replace(/^www\./, "");
+  if (!host) return null;
+  const appHost = (process.env.APP_BASE_URL || "https://moshcoding.com")
+    .replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase().replace(/^www\./, "");
+  if (host === appHost || host === "localhost" || host === "127.0.0.1") return null;
+  if (/\.railway\.app$|\.up\.railway\.app$/.test(host)) return null;
+  return safeDomain(host);
+}
+
 // Per-tenant OpenGraph/Twitter with a branded, generated og:image so every
 // parked domain shares nicely. No ?dn= → the landing keeps the layout defaults.
 export async function generateMetadata({
@@ -16,7 +35,7 @@ export async function generateMetadata({
   searchParams: Promise<Record<string, string | undefined>>;
 }): Promise<Metadata> {
   const sp = (await searchParams) || {};
-  const dn = safeDomain(sp.dn);
+  const dn = safeDomain(sp.dn) || (await hostTenantDn());
   if (!dn) return {};
   const tenantOverride = await getTenantConfig(dn).catch(() => null);
   const cfg = configFor(dn, {
@@ -42,7 +61,8 @@ export default async function Page({
   const sp = (await searchParams) || {};
   const bidDn = safeDomain(sp.bid);
   if (bidDn) return <BidPage dn={bidDn} />;
-  const dn = safeDomain(sp.dn);
+  // ?dn wins (iframe/masked path); else the branded Host (direct custom domain).
+  const dn = safeDomain(sp.dn) || (await hostTenantDn());
   if (!dn) return <Landing />;
 
   // A paid/provisioned domain has a tenants row that overrides the defaults.
