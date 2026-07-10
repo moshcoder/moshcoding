@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates" | "dns">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -89,9 +89,12 @@ export default function Dashboard() {
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
+        <button className={`tab${tab === "dns" ? " on" : ""}`} onClick={() => setTab("dns")}>Custom domain</button>
       </div>
 
-      {tab === "affiliates" ? (
+      {tab === "dns" ? (
+        <DomainsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "webhooks" ? (
         <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
@@ -589,6 +592,99 @@ function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m
           )}
         </>
       )}
+    </section>
+  );
+}
+
+function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [data, setData] = useState<any>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  const load = async (announce?: string) => {
+    try {
+      const r = await fetch("/api/domains");
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed to load.");
+      setData(d);
+      if (announce) onOk(announce);
+    } catch (e: any) { onError(e.message || "Failed."); setData({ configured: true, domains: [] }); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const park = async (domain: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/domains", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ domain }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed.");
+      (d.warnings || []).forEach((w: string) => onError(w));
+      onOk(`Set the two DNS records below at your registrar, then hit Verify.`);
+      await load();
+    } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
+  };
+
+  const unpark = async (domain: string) => {
+    if (typeof window !== "undefined" && !window.confirm(`Un-park ${domain}? Your site stays on ${domain} only while its DNS points here.`)) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/domains?domain=${encodeURIComponent(domain)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed.");
+      onOk(`Un-parked ${domain}.`); await load();
+    } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
+  };
+
+  if (data === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!data.configured) {
+    return <section className="card2"><h2>Custom domain</h2><p className="sub">Custom domains aren&apos;t enabled on this deployment yet.</p></section>;
+  }
+
+  const domains = data.domains || [];
+  return (
+    <section className="card2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>Custom domain</h2>
+        <button className="btn2 ghost" disabled={busy} onClick={() => load("Rechecked DNS.")}>↻ Verify DNS</button>
+      </div>
+      <p className="sub">Point your own domain straight at moshcoding with two DNS records. Set them at your registrar (Porkbun, Namecheap, Cloudflare…), then hit <b>Verify DNS</b>. The TLS cert is issued automatically.</p>
+
+      {domains.length === 0 && (
+        <p className="sub">You haven&apos;t claimed a domain yet — add one on the <b>Domains</b> tab first, then park it here.</p>
+      )}
+
+      {domains.map((d: any) => (
+        <div key={d.domain} className="card3" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="ed-h" style={{ margin: 0 }}>
+              {d.domain}{" "}
+              {!d.registered ? <span className="pill" style={{ opacity: 0.6 }}>not parked</span>
+                : d.live ? <span className="pill">✓ live</span>
+                : <span className="pill" style={{ opacity: 0.7 }}>⏳ pending DNS</span>}
+            </h3>
+            {!d.registered
+              ? <button className="btn2" disabled={busy} onClick={() => park(d.domain)}>Park this domain</button>
+              : <button className="btn2 ghost" disabled={busy} onClick={() => unpark(d.domain)}>Un-park</button>}
+          </div>
+
+          {d.registered && (
+            <>
+              <p className="sub" style={{ margin: "10px 0 6px" }}>Add these two records at your registrar:</p>
+              <ul className="list">
+                {d.records.map((rec: any, i: number) => (
+                  <li key={i} style={{ alignItems: "center" }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}>
+                      <b>{rec.type}</b>{"  "}<span className="muted">host</span> {rec.host}{"  →  "}{rec.value}{" "}
+                      <span style={{ opacity: 0.6 }}>({rec.status})</span>
+                    </span>
+                    <button className="btn2 ghost" onClick={() => copyText(rec.value).then((ok) => onOk(ok ? "Copied. 🤘" : "Copy failed — select it."))}>Copy</button>
+                  </li>
+                ))}
+              </ul>
+              <p className="sub" style={{ marginTop: 4 }}>Apex uses <b>ALIAS</b> (a plain CNAME isn&apos;t allowed at the root); <b>www</b> uses <b>CNAME</b> and auto-redirects to the apex.</p>
+            </>
+          )}
+        </div>
+      ))}
     </section>
   );
 }
