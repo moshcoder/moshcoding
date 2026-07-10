@@ -207,7 +207,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [wallet, setWallet] = useState("");
   const [repo, setRepo] = useState("");
   const [assetPattern, setAssetPattern] = useState("");
-  const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
+  const [assets, setAssets] = useState<{ label: string; url: string; kind?: string }[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [videos, setVideos] = useState<{ name: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [blocks, setBlocks] = useState<BlockRow[]>([]);
@@ -439,15 +440,33 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         ))}
       </ul>
 
-      <h3 className="ed-h">GitHub assets <span className="muted">(pull images from a repo onto your page)</span></h3>
+      <h3 className="ed-h">GitHub media <span className="muted">(pull images, video &amp; audio from a repo onto your page)</span></h3>
       <div className="row"><input className="inp" placeholder="owner/repo — e.g. moshcoder/moshcoding" value={repo} onChange={(e) => setRepo(e.target.value)} /></div>
-      <div className="row"><input className="inp" placeholder="path glob — e.g. images/*_thumb.png" value={assetPattern} onChange={(e) => setAssetPattern(e.target.value)} /></div>
+      <div className="row">
+        <input className="inp" placeholder="path glob — e.g. media/*  (blank = all media)" value={assetPattern} onChange={(e) => setAssetPattern(e.target.value)} />
+        <button className="btn2 ghost" type="button" disabled={refreshing || !repo.trim()} onClick={async () => {
+          setRefreshing(true);
+          try {
+            const r = await fetch("/api/account/refresh-media", { method: "POST" });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || "Refresh failed.");
+            setAssets(d.assets || []);
+            const c = d.counts || {};
+            onOk(`Refreshed ${d.total} — ${c.image || 0} image, ${c.video || 0} video, ${c.audio || 0} audio. 🤘`);
+          } catch (e: any) { onError(e.message || "Refresh failed."); }
+          finally { setRefreshing(false); }
+        }}>{refreshing ? "Refreshing…" : "↻ Refresh media"}</button>
+      </div>
       {assets.length > 0 && (
         <div className="t-assets" style={{ margin: "10px 0 0" }}>
-          {assets.slice(0, 12).map((a, i) => <span key={i} className="t-asset"><img src={a.url} alt={a.label} loading="lazy" /></span>)}
+          {assets.slice(0, 12).map((a: any, i: number) =>
+            a.kind === "video" ? <span key={i} className="t-asset t-asset-chip">🎬 {a.label || "video"}</span>
+            : a.kind === "audio" ? <span key={i} className="t-asset t-asset-chip">🎧 {a.label || "audio"}</span>
+            : <span key={i} className="t-asset"><img src={a.url} alt={a.label} loading="lazy" /></span>,
+          )}
         </div>
       )}
-      {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN.</p>}
+      {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN. Use <b>↻ Refresh media</b> to re-pull without saving the rest of the form.</p>}
 
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : `Save & publish ${activeDomain}`}</button>
