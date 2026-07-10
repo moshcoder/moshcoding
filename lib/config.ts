@@ -394,9 +394,14 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams), ...cleanLinks(ov.customLinks, "link")];
   // Sponsors: ?aff_linkN= query + saved sponsors.
   const sponsors = [...parseSponsors(opts.affParams), ...cleanLinks(ov.sponsors, "sponsor")];
-  // GitHub repo image assets (saved with {name,url}); rendered as a gallery.
+  // GitHub repo media assets (images/video/audio, {name,url,kind}); a gallery.
+  const assetKinds = new Set(["image", "video", "audio"]);
   const assets = Array.isArray(ov.assets)
-    ? ov.assets.filter((a: any) => a && a.url).map((a: any) => ({ label: String(a.name || a.label || ""), url: String(a.url), kind: "image" }))
+    ? ov.assets.filter((a: any) => a && a.url).map((a: any) => ({
+        label: String(a.name || a.label || ""),
+        url: String(a.url),
+        kind: assetKinds.has(a.kind) ? String(a.kind) : "image",
+      }))
     : [];
   // Uploaded MP4 videos ({name, url, poster?}).
   const videos = Array.isArray(ov.videos)

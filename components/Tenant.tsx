@@ -98,11 +98,17 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
 
         {cfg.assets.length > 0 && (
           <div className="t-assets" aria-label="Assets">
-            {cfg.assets.map((a, i) => (
-              <a key={i} className="t-asset" href={a.url} target="_blank" rel="noopener noreferrer" title={a.label}>
-                <img src={a.url} alt={a.label} loading="lazy" />
-              </a>
-            ))}
+            {cfg.assets.map((a, i) =>
+              a.kind === "video" ? (
+                <video key={i} className="t-asset t-asset-av" controls preload="metadata" playsInline src={a.url} title={a.label} />
+              ) : a.kind === "audio" ? (
+                <audio key={i} className="t-asset t-asset-audio" controls preload="none" src={a.url} title={a.label} />
+              ) : (
+                <a key={i} className="t-asset" href={a.url} target="_blank" rel="noopener noreferrer" title={a.label}>
+                  <img src={a.url} alt={a.label} loading="lazy" />
+                </a>
+              ),
+            )}
           </div>
         )}
 

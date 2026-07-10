@@ -424,6 +424,12 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .t-asset { display: grid; place-items: center; aspect-ratio: 1/1; padding: 8px; background: #111214; border: 1px solid #262629; border-radius: 10px; overflow: hidden; transition: border-color .15s ease; }
 .t-asset:hover { border-color: var(--tenant-accent, var(--acid)); }
 .t-asset img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* mixed-media repo assets: video/audio tiles + dashboard chips */
+.t-asset-av { aspect-ratio: 1/1; width: 100%; padding: 0; background: #000; }
+.t-asset-av video, video.t-asset-av { width: 100%; height: 100%; object-fit: cover; }
+.t-asset-audio { grid-column: 1 / -1; aspect-ratio: auto; width: 100%; padding: 8px; }
+.t-asset-audio audio, audio.t-asset-audio { width: 100%; }
+.t-asset-chip { aspect-ratio: auto; padding: 8px 10px; font-family: var(--mono); font-size: 11px; color: var(--ash); text-align: center; word-break: break-word; }
 
 /* Dashboard tabs */
 .tabs { display: flex; gap: 8px; margin: 4px 0 18px; border-bottom: 1px solid var(--line); }
