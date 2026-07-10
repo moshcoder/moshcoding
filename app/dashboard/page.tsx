@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
+import { copyText } from "@/lib/clipboard";
 
 type Org = { id: string; name: string };
 type Team = { id: string; name: string; org_id: string; org_name: string; role: string };
@@ -308,7 +309,7 @@ function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk
 
   if (data === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
   const aff = data.affiliate;
-  const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => onOk("Copied. 🤘")).catch(() => {});
+  const copy = (t: string) => copyText(t).then((ok) => onOk(ok ? "Copied. 🤘" : "Couldn't copy — select the text and copy manually."));
 
   const post = async (body: any, okMsg: string) => {
     setBusy(true);

@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import type { TenantConfig } from "@/lib/config";
+import { copyText } from "@/lib/clipboard";
 
 // "Post to socials" — composes a ready-to-paste post (@handle + #hashtags) and
 // offers one-click share on the networks that support a prefill intent (X,
@@ -31,11 +32,13 @@ export default function SharePost({ cfg }: { cfg: TenantConfig }) {
   ];
 
   const copyFor = async (label: string) => {
-    try {
-      await navigator.clipboard.writeText(shareText);
+    const ok = await copyText(shareText);
+    if (ok) {
       setCopied(label);
       setTimeout(() => setCopied(null), 2200);
-    } catch { setCopied(null); }
+    } else {
+      setCopied(null);
+    }
   };
 
   return (
