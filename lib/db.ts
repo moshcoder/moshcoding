@@ -38,6 +38,8 @@ async function initSchema(): Promise<void> {
   // swallow the "duplicate column name" error on repeat runs.
   await addColumnIfMissing("signups", "token", "TEXT");
   await addColumnIfMissing("signups", "verified_at", "TEXT");
+  // Referral code from ?ref=<code> — first-touch attribution (see addSignup).
+  await addColumnIfMissing("signups", "ref", "TEXT");
   await d.execute(`
     CREATE TABLE IF NOT EXISTS users (
       sub        TEXT PRIMARY KEY,
@@ -188,16 +190,18 @@ export async function addSignup(opts: {
   email: string;
   dn?: string | null;
   ua?: string | null;
+  ref?: string | null;
 }): Promise<SignupResult> {
   await ensureSchema();
   const domain = opts.dn || "moshcoding.com";
   const email = opts.email.toLowerCase();
   const token = randomBytes(24).toString("base64url");
+  const ref = opts.ref || null;
 
   const res = await db().execute({
-    sql: `INSERT INTO signups (email, dn, ua, token) VALUES (?, ?, ?, ?)
+    sql: `INSERT INTO signups (email, dn, ua, token, ref) VALUES (?, ?, ?, ?, ?)
           ON CONFLICT (email, dn) DO NOTHING`,
-    args: [email, domain, (opts.ua || "").slice(0, 300), token],
+    args: [email, domain, (opts.ua || "").slice(0, 300), token, ref],
   });
   if (res.rowsAffected > 0) {
     return { ok: true, already: false, verified: false, token };
@@ -212,9 +216,12 @@ export async function addSignup(opts: {
   const verified = Boolean(existing.rows[0]?.verified_at);
   if (verified) return { ok: true, already: true, verified: true, token: null };
 
+  // Refresh the token for the resend; fill in the referral code only if we
+  // don't already have one (first-touch attribution — never overwrite).
   await db().execute({
-    sql: `UPDATE signups SET token = ? WHERE email = ? AND dn = ? AND verified_at IS NULL`,
-    args: [token, email, domain],
+    sql: `UPDATE signups SET token = ?, ref = COALESCE(ref, ?)
+           WHERE email = ? AND dn = ? AND verified_at IS NULL`,
+    args: [token, ref, email, domain],
   });
   return { ok: true, already: true, verified: false, token };
 }

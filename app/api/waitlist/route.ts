@@ -8,6 +8,14 @@ export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** Referral code from ?ref=<code>: keep it URL-safe and bounded, or drop it. */
+function cleanRef(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const safe = s.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  return safe || null;
+}
+
 export async function POST(req: NextRequest) {
   let body: any = {};
   try { body = await req.json(); } catch { /* empty */ }
@@ -18,9 +26,10 @@ export async function POST(req: NextRequest) {
   const dn = body?.dn ? safeDomain(body.dn) : null;
   if (body?.dn && !dn) return NextResponse.json({ error: "invalid domain" }, { status: 400 });
   const domain = dn || "moshcoding.com";
+  const ref = cleanRef(body?.ref);
 
   try {
-    const result = await addSignup({ email, dn: domain, ua: req.headers.get("user-agent") });
+    const result = await addSignup({ email, dn: domain, ua: req.headers.get("user-agent"), ref });
 
     // Already confirmed — nothing to send.
     if (result.verified) {
