@@ -22,6 +22,8 @@ export type TenantConfig = {
   styles: string[];
   /** Optional background accent (rgba) from ?bg_rgba=; null = use the theme default. */
   bgAccent: string | null;
+  /** Optional ?stream= playlist/stream URL — rendered as a prominent ▶ Stream CTA. */
+  stream: string | null;
 };
 
 /** Default moshcoding accent (poison lime). Used unless an rgba override is given. */
@@ -32,6 +34,22 @@ export function validRgba(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.trim();
   return /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(?:0|1|0?\.\d+)\s*)?\)$/i.test(s) ? s : null;
+}
+
+/**
+ * Lenient accent parser for ?fg_rgba=/?bg_rgba=. Accepts a full rgb()/rgba()
+ * string OR bare comma numbers (e.g. "255,255,255,.66") which get wrapped as
+ * rgba(). Whitespace tolerant. Returns a valid color string, or null.
+ */
+export function coerceRgba(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  const direct = validRgba(s);
+  if (direct) return direct;
+  const m = s.replace(/\s+/g, "").match(/^(\d{1,3}),(\d{1,3}),(\d{1,3})(?:,(0|1|0?\.\d+))?$/);
+  if (m) return validRgba(`rgba(${m[1]},${m[2]},${m[3]},${m[4] ?? "1"})`);
+  return null;
 }
 
 export function safeDomain(dn: unknown): string | null {
@@ -163,6 +181,8 @@ export type TenantOverrides = {
   fgRgba?: string | null;
   /** ?bg_rgba= background accent, rgba() only. */
   bgRgba?: string | null;
+  /** ?stream= playlist/stream URL (Spotify/YouTube/SoundCloud/…). */
+  stream?: string | null;
   /** Override loaded from the DB tenants table for a provisioned (paid) domain. */
   tenantOverride?: Record<string, any> | null;
 };
@@ -294,7 +314,8 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     // Accent always falls back to the default moshcoding green; a tenant only
     // overrides it with an explicit rgba() via ?fg_rgba= (config hex accents are
     // intentionally ignored so pages don't drift off-brand). ?bg_rgba= tints bg.
-    accent: validRgba(opts.fgRgba) || DEFAULT_ACCENT,
-    bgAccent: validRgba(opts.bgRgba),
+    accent: coerceRgba(opts.fgRgba) || DEFAULT_ACCENT,
+    bgAccent: coerceRgba(opts.bgRgba),
+    stream: fallbackUrl(opts.stream),
   };
 }

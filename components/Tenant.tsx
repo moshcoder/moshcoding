@@ -27,6 +27,10 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         <p className="t-tag">{cfg.tagline}</p>
         <p className="t-sub">{cfg.sub}</p>
 
+        {cfg.stream && (
+          <a className="t-stream" href={cfg.stream} target="_blank" rel="noopener noreferrer">▶ Stream</a>
+        )}
+
         <WaitlistForm dn={cfg.dn} cta={cfg.cta} big />
 
         {cfg.hashtags.length > 0 ? (

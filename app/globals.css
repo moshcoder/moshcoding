@@ -255,3 +255,7 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .share-btn:hover { border-color: var(--tenant-accent, var(--acid)); color: #fff; }
 .share-btn.primary { background: var(--tenant-accent, var(--acid)); color: #0a0a0a; border-color: transparent; font-weight: 700; }
 .share-note { text-align: center; font-size: 12px; color: var(--acid); margin: 8px 0 0; }
+
+/* ?stream= playlist CTA */
+.t-stream { display: inline-flex; align-items: center; gap: 8px; margin: 0 auto 16px; padding: 11px 22px; border-radius: 999px; font-family: var(--mono); font-weight: 700; font-size: 14px; text-decoration: none; background: var(--tenant-accent, var(--acid)); color: #0a0a0a; transition: transform .15s ease, filter .15s ease; }
+.t-stream:hover { transform: translateY(-1px); filter: brightness(1.08); }
