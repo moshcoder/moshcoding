@@ -35,8 +35,10 @@ export async function POST(req: NextRequest) {
     dn,
     code: aff.code,
     commission_pct: aff.commission_pct,
-    // Domain-scoped share link: lands on <dn>'s page and sets the 90-day cookie.
-    shareUrl: `${baseUrl()}/?dn=${encodeURIComponent(dn)}&ref=${encodeURIComponent(aff.code)}`,
+    // Branded share link on the domain itself. The visit's ?ref rides through the
+    // domain's forwarding onto ?dn=<dn>&ref=… (see safeDomain), setting the
+    // 90-day mc_ref cookie. Requires the domain to forward query params.
+    shareUrl: `https://${dn}/?ref=${encodeURIComponent(aff.code)}`,
     manageUrl: `${baseUrl()}/dashboard`,
   });
 }
