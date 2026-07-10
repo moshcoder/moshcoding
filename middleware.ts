@@ -4,9 +4,19 @@ import { NextRequest, NextResponse } from "next/server";
 // e.g. moshcode.sh). Read at RUNTIME so FRAME_ANCESTORS env changes take effect
 // on redeploy without a code edit. 'self' lets the app frame itself; no other
 // origin can (anti-clickjacking).
-function frameAncestors(): string {
+function frameAncestors(req: NextRequest): string {
   const parked = (process.env.FRAME_ANCESTORS || "https://moshcode.sh").split(/\s+/).filter(Boolean);
-  return ["'self'", ...parked].join(" ");
+  const allow = ["'self'", ...parked];
+
+  // Auto-allow the parked domain currently being rendered. A masked-forwarded
+  // domain frames moshcoding.com/?dn=<self>, so the frame request carries its
+  // own ?dn; trust it to iframe just its own tenant page. This means new parked
+  // domains work without hand-editing FRAME_ANCESTORS for each one.
+  const dn = (req.nextUrl.searchParams.get("dn") || "").trim().toLowerCase();
+  if (dn.length <= 253 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(dn)) {
+    allow.push(`https://${dn}`, `https://www.${dn}`);
+  }
+  return allow.join(" ");
 }
 
 // Redirect www.moshcoding.com → https://moshcoding.com (apex, permanent).
@@ -21,7 +31,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
   const res = NextResponse.next();
-  res.headers.set("Content-Security-Policy", `frame-ancestors ${frameAncestors()}`);
+  res.headers.set("Content-Security-Policy", `frame-ancestors ${frameAncestors(req)}`);
 
   // Referral attribution: a ?ref=<code> visit drops a 90-day cookie (first-touch
   // — the first ref a visitor arrives with sticks). Signup/waitlist read it so
