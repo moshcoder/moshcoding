@@ -300,6 +300,10 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .qhelp-ex-list a:hover { text-decoration: underline; }
 @media (max-width: 520px) { .qhelp-row { grid-template-columns: 1fr; gap: 3px; } }
 
+.badges-cta { grid-column: 1 / -1; text-align: center; margin: 8px 0 0; font-family: var(--mono); font-size: 14px; }
+.badges-cta a { color: var(--acid); }
+.badges a { color: inherit; }
+
 /* Tenant ?code_block= snippet */
 .t-code { font-family: var(--mono); font-size: 14px; line-height: 1.6; text-align: left; color: var(--bone); background: var(--panel, #101210); border: 1px solid var(--line); border-left: 3px solid var(--tenant-accent, var(--acid)); border-radius: 8px; padding: 16px 18px; margin: 18px auto 0; max-width: 460px; width: 100%; overflow-x: auto; white-space: pre; }
 

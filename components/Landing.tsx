@@ -51,10 +51,11 @@ export default function Landing() {
         </p>
       </section>
 
-      <section className="badges">
-        <figure><img src="/assets/badge-code-hard.png" alt="Code Hard badge" /><figcaption>Code Hard</figcaption></figure>
-        <figure><img src="/assets/badge-no-bugs.png" alt="No Bugs, Just Features badge" /><figcaption>No Bugs, Just Features</figcaption></figure>
-        <figure><img src="/assets/badge-push-code.png" alt="Push Code, Start Pits badge" /><figcaption>Push Code, Start Pits</figcaption></figure>
+      <section id="badges" className="badges">
+        <a href="/badges"><figure><img src="/assets/badge-code-hard.png" alt="Code Hard badge" /><figcaption>Code Hard</figcaption></figure></a>
+        <a href="/badges"><figure><img src="/assets/badge-no-bugs.png" alt="No Bugs, Just Features badge" /><figcaption>No Bugs, Just Features</figcaption></figure></a>
+        <a href="/badges"><figure><img src="/assets/badge-push-code.png" alt="Push Code, Start Pits badge" /><figcaption>Push Code, Start Pits</figcaption></figure></a>
+        <p className="badges-cta"><a href="/badges">Get the full media kit →</a></p>
       </section>
 
       <section id="waitlist" className="waitlist">

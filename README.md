@@ -1,5 +1,7 @@
 # #MOSHCODING
 
+[![#moshcoding](https://img.shields.io/badge/%23moshcoding-code%20hard%2C%20mosh%20harder-9EF01A?style=for-the-badge&labelColor=0a0a0a)](https://moshcoding.com/badges)
+
 **Code hard. Mosh harder.** A Spotify playlist — and a brand — for developers who ship to a wall of distortion.
 
 > **moshcoding** is the brand. **Profullstack, Inc.** (an S-corp) remains the legal entity — `profullstack.com` stays registered; `moshcoding.com` is the face.
@@ -81,6 +83,39 @@ Env: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (required) · `COINPAY_ISSUER`,
 Builds from the **Dockerfile** (`oven/bun` → `bun run build` → `bun run start`);
 `railway.json` sets the start command + `/api/me` health check. Set the env vars above in
 the service variables — no volume needed, Turso is the database.
+
+## moshcode CLI
+
+The **#moshcoding agent** — a lean wrapper for agentic coding. It installs and drives
+existing engines (opencode, Claude Code, codex) and adds a tiny scripting toolkit
+(**moshscript**) on top.
+
+```bash
+npm install -g github:moshcoder/moshcode
+
+moshcode install opencode        # or: claude / codex
+moshcode engines                 # list installable engines
+moshcode run examples/alive.mosh # run a moshscript
+```
+
+```
+while (alive) {
+  code();
+  mosh();
+  notify();   # -> moshcoding.com web notifications (+ optional webhook)
+  repeat();
+} // no bugs, only features
+```
+
+Repo: **https://github.com/moshcoder/moshcode**
+
+## Badges
+
+Grab brand badges & banners at **[moshcoding.com/badges](https://moshcoding.com/badges)**, or drop this one in your README:
+
+```md
+[![#moshcoding](https://img.shields.io/badge/%23moshcoding-code%20hard%2C%20mosh%20harder-9EF01A?style=for-the-badge&labelColor=0a0a0a)](https://moshcoding.com)
+```
 
 ## Links
 
