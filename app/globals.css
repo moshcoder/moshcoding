@@ -309,6 +309,8 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .btn2.ghost:hover { border-color: var(--acid); color: var(--acid); }
 .list { list-style: none; margin: 8px 0 0; padding: 0; }
 .list li { font-family: var(--mono); font-size: 13px; color: var(--bone); padding: 9px 0; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.row-actions .btn2 { padding: 4px 10px; font-size: 12px; }
 .pill { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--acid); border: 1px solid var(--acid-dim); padding: 2px 8px; }
 .muted { color: var(--ash); }
 .secret { font-family: var(--mono); font-size: 12px; color: var(--acid); background: #0b0d0a; border: 1px dashed var(--acid-dim); padding: 8px 10px; margin-top: 8px; word-break: break-all; }

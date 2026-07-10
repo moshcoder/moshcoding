@@ -531,6 +531,49 @@ export async function ownsParkedDomain(accountId: string, domain: string): Promi
   return res.rows.length > 0;
 }
 
+// ---- org / team / project rename + cascade delete -------------------------
+export async function renameOrg(id: string, name: string): Promise<void> {
+  await ensureSchema();
+  await db().execute({ sql: `UPDATE orgs SET name = ? WHERE id = ?`, args: [name, id] });
+}
+export async function renameTeam(id: string, name: string): Promise<void> {
+  await ensureSchema();
+  await db().execute({ sql: `UPDATE teams SET name = ? WHERE id = ?`, args: [name, id] });
+}
+export async function renameProject(id: string, name: string): Promise<void> {
+  await ensureSchema();
+  await db().execute({ sql: `UPDATE projects SET name = ? WHERE id = ?`, args: [name, id] });
+}
+
+/** Deletes a project and its webhook config/history (SQLite has no cascade). */
+export async function deleteProject(id: string): Promise<void> {
+  await ensureSchema();
+  const d = db();
+  await d.execute({ sql: `DELETE FROM webhook_deliveries WHERE endpoint_id IN (SELECT id FROM webhook_endpoints WHERE project_id = ?)`, args: [id] });
+  await d.execute({ sql: `DELETE FROM webhook_endpoints WHERE project_id = ?`, args: [id] });
+  await d.execute({ sql: `DELETE FROM inbound_events WHERE inbound_id IN (SELECT id FROM inbound_webhooks WHERE project_id = ?)`, args: [id] });
+  await d.execute({ sql: `DELETE FROM inbound_webhooks WHERE project_id = ?`, args: [id] });
+  await d.execute({ sql: `DELETE FROM projects WHERE id = ?`, args: [id] });
+}
+/** Deletes a team, its projects (cascaded), members, and invitations. */
+export async function deleteTeam(id: string): Promise<void> {
+  await ensureSchema();
+  const d = db();
+  const projs = await d.execute({ sql: `SELECT id FROM projects WHERE team_id = ?`, args: [id] });
+  for (const r of projs.rows) await deleteProject(String((r as any).id));
+  await d.execute({ sql: `DELETE FROM team_members WHERE team_id = ?`, args: [id] });
+  await d.execute({ sql: `DELETE FROM team_invitations WHERE team_id = ?`, args: [id] });
+  await d.execute({ sql: `DELETE FROM teams WHERE id = ?`, args: [id] });
+}
+/** Deletes an org and every team under it (cascaded). */
+export async function deleteOrg(id: string): Promise<void> {
+  await ensureSchema();
+  const d = db();
+  const teams = await d.execute({ sql: `SELECT id FROM teams WHERE org_id = ?`, args: [id] });
+  for (const r of teams.rows) await deleteTeam(String((r as any).id));
+  await d.execute({ sql: `DELETE FROM orgs WHERE id = ?`, args: [id] });
+}
+
 // ---- domain auctions / bids ----------------------------------------------
 export type Auction = {
   domain: string;

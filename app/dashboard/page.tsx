@@ -51,6 +51,18 @@ export default function Dashboard() {
     try { await fn(); await refresh(); } catch (e: any) { say(e.message, false); }
   };
 
+  const rename = (kind: "orgs" | "teams" | "projects", id: string, cur: string) => wrap(async () => {
+    const name = (typeof window !== "undefined" ? window.prompt("Rename to:", cur) : "")?.trim();
+    if (!name || name === cur) return;
+    await api(`/api/${kind}/${id}`, "PATCH", { name });
+    say("Renamed.");
+  });
+  const remove = (kind: "orgs" | "teams" | "projects", id: string, warn: string) => wrap(async () => {
+    if (typeof window !== "undefined" && !window.confirm(warn)) return;
+    await api(`/api/${kind}/${id}`, "DELETE");
+    say("Deleted.");
+  });
+
   if (me === undefined) return <div className="dash"><p className="sub">Loading…</p></div>;
   if (!me?.user) {
     return (
@@ -96,7 +108,15 @@ export default function Dashboard() {
           <input className="inp" placeholder="New org name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
           <button className="btn2" disabled={!orgName.trim()} onClick={wrap(async () => { await api("/api/orgs", "POST", { name: orgName.trim() }); setOrgName(""); say("Org created."); })}>Create org</button>
         </div>
-        <ul className="list">{orgs.map((o) => <li key={o.id}><span>{o.name}</span><span className="muted">{o.id.slice(0, 8)}</span></li>)}</ul>
+        <ul className="list">{orgs.map((o) => (
+          <li key={o.id}>
+            <span>{o.name}</span>
+            <span className="row-actions">
+              <button className="btn2 ghost" onClick={rename("orgs", o.id, o.name)}>Rename</button>
+              <button className="btn2 ghost" onClick={remove("orgs", o.id, `Delete org “${o.name}” and ALL its teams, projects & webhooks? This can't be undone.`)}>Delete</button>
+            </span>
+          </li>
+        ))}</ul>
       </section>
 
       <section className="card2">
@@ -109,7 +129,14 @@ export default function Dashboard() {
           <button className="btn2" disabled={!teamName.trim() || !teamOrg} onClick={wrap(async () => { await api("/api/teams", "POST", { name: teamName.trim(), org_id: teamOrg }); setTeamName(""); say("Team created."); })}>Create team</button>
         </div>
         <ul className="list">{teams.map((t) => (
-          <li key={t.id}><span>{t.name} <span className="muted">· {t.org_name}</span></span><span className="pill">{t.role}</span></li>
+          <li key={t.id}>
+            <span>{t.name} <span className="muted">· {t.org_name}</span></span>
+            <span className="row-actions">
+              <span className="pill">{t.role}</span>
+              <button className="btn2 ghost" onClick={rename("teams", t.id, t.name)}>Rename</button>
+              <button className="btn2 ghost" onClick={remove("teams", t.id, `Delete team “${t.name}” and its projects & webhooks?`)}>Delete</button>
+            </span>
+          </li>
         ))}</ul>
       </section>
 
@@ -122,7 +149,15 @@ export default function Dashboard() {
           </select>
           <button className="btn2" disabled={!projName.trim() || !projTeam} onClick={wrap(async () => { await api("/api/projects", "POST", { name: projName.trim(), team_id: projTeam }); setProjName(""); say("Project created."); })}>Create project</button>
         </div>
-        <ul className="list">{projects.map((p) => <li key={p.id}><span>{p.name} <span className="muted">· {p.team_name}</span></span></li>)}</ul>
+        <ul className="list">{projects.map((p) => (
+          <li key={p.id}>
+            <span>{p.name} <span className="muted">· {p.team_name}</span></span>
+            <span className="row-actions">
+              <button className="btn2 ghost" onClick={rename("projects", p.id, p.name)}>Rename</button>
+              <button className="btn2 ghost" onClick={remove("projects", p.id, `Delete project “${p.name}” and its webhooks?`)}>Delete</button>
+            </span>
+          </li>
+        ))}</ul>
       </section>
 
       {projects.map((p) => <ProjectWebhooks key={p.id} project={p} onError={(m) => say(m, false)} />)}
