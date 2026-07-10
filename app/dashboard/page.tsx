@@ -413,7 +413,8 @@ function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk
         <h2>Affiliates</h2>
         <p className="sub">
           Earn <b>up to 80% commission</b> on all fees from people you refer. The free plan is floored at
-          80% minimum payout; upgrade to <b>$1/mo</b> to set your own rate.
+          80% minimum payout; upgrade to <b>$1/mo</b> to set your own rate. Clicks are tracked with a
+          <b> 90-day cookie</b> — you're credited if they sign up within 90 days.
         </p>
         <button className="btn2" disabled={busy} onClick={() => post({}, "You're an affiliate. 🤘")}>
           {busy ? "…" : "Become an 80% affiliate"}
@@ -437,6 +438,7 @@ function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk
       <h3 className="ed-h">Share links</h3>
       <div className="row"><input className="inp" readOnly value={aff.shareUrl} /><button className="btn2 ghost" onClick={() => copy(aff.shareUrl)}>Copy</button></div>
       <div className="row"><input className="inp" readOnly value={aff.refUrl} /><button className="btn2 ghost" onClick={() => copy(aff.refUrl)}>Copy</button></div>
+      <p className="sub" style={{ marginTop: 8 }}>🍪 Any visit to one of these links drops a <b>90-day first-touch cookie</b> — you get credit if they sign up within 90 days, even later.</p>
 
       <h3 className="ed-h">Commission rate</h3>
       {aff.plan === "paid" ? (

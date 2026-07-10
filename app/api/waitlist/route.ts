@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   const dn = body?.dn ? safeDomain(body.dn) : null;
   if (body?.dn && !dn) return NextResponse.json({ error: "invalid domain" }, { status: 400 });
   const domain = dn || "moshcoding.com";
-  const ref = cleanRef(body?.ref);
+  // Explicit ?ref in the request, else the first-touch mc_ref cookie (90 days).
+  const ref = cleanRef(body?.ref) || cleanRef(req.cookies.get("mc_ref")?.value);
   // Brand the confirmation email with the tenant (from ?dn=), not "moshcoding".
   const tenantOverride = await getTenantConfig(domain).catch(() => null);
   const brand = configFor(domain, { tenantOverride }).brand;

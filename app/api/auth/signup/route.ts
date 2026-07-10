@@ -48,7 +48,9 @@ export async function POST(req: NextRequest) {
   }
   const payoutWallet = cleanWallet(body?.payoutWallet ?? body?.payout_wallet);
   const payoutChain = typeof body?.payoutChain === "string" ? body.payoutChain.trim().slice(0, 24) : null;
-  const ref = typeof body?.ref === "string" ? body.ref.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || null : null;
+  // Explicit ?ref in the request, else the first-touch mc_ref cookie (90 days).
+  const rawRef = (typeof body?.ref === "string" && body.ref) || req.cookies.get("mc_ref")?.value || "";
+  const ref = String(rawRef).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || null;
 
   if (await getAccountByEmail(email)) {
     return NextResponse.json({ error: "An account with that email already exists. Try logging in." }, { status: 409 });

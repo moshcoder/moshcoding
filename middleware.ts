@@ -22,6 +22,22 @@ export function middleware(req: NextRequest) {
   }
   const res = NextResponse.next();
   res.headers.set("Content-Security-Policy", `frame-ancestors ${frameAncestors()}`);
+
+  // Referral attribution: a ?ref=<code> visit drops a 90-day cookie (first-touch
+  // — the first ref a visitor arrives with sticks). Signup/waitlist read it so
+  // the referral is credited whenever they convert within the window.
+  const rawRef = req.nextUrl.searchParams.get("ref");
+  if (rawRef && !req.cookies.get("mc_ref")?.value) {
+    const ref = rawRef.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+    if (ref) {
+      res.cookies.set("mc_ref", ref, {
+        maxAge: 60 * 60 * 24 * 90,
+        path: "/",
+        sameSite: "lax",
+        secure: (process.env.APP_BASE_URL || "").startsWith("https://"),
+      });
+    }
+  }
   return res;
 }
 
