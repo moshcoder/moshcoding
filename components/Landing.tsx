@@ -32,6 +32,23 @@ export default function Landing() {
         </div>
       </section>
 
+      <section id="listen" className="listen">
+        <p className="tag">// hear the house band</p>
+        <div className="fb-embed">
+          <iframe
+            src="https://www.facebook.com/plugins/post.php?href=https%3A%2F%2Fwww.facebook.com%2Fanthony.ettinger%2Fposts%2Fpfbid0LMc6FW7XJTsrtQHy1A7ZZS1cxSyWhGCnR2p2xkbKt4wyHfuF1W6Az1HmXMqQ7731l&show_text=true&width=500"
+            width={500}
+            height={498}
+            style={{ border: "none", overflow: "hidden", maxWidth: "100%" }}
+            scrolling="no"
+            frameBorder="0"
+            allowFullScreen
+            allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+            title="Moshcoding house band on Facebook"
+          />
+        </div>
+      </section>
+
       <div className="marquee" aria-hidden="true">
         <div className="marquee-track">
           {[...TICKER, ...TICKER].map((t, i) => (

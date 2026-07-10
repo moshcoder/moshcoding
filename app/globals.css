@@ -163,6 +163,10 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 
 .waitlist { text-align: center; }
 .waitlist .lede { margin-inline: auto; }
+
+.listen { text-align: center; }
+.fb-embed { display: flex; justify-content: center; }
+.fb-embed iframe { width: 500px; max-width: 100%; border: 1px solid var(--line); background: #0b0d0a; }
 .wform { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; max-width: 520px; margin: 0 auto; }
 .wform input[type=email] {
   flex: 1 1 260px; font-family: var(--mono); font-size: 16px; color: var(--bone);
