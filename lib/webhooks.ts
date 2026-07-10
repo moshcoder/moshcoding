@@ -19,8 +19,14 @@ export function verifyWebhook(headers: Record<string, string | null | undefined>
   const tsNum = parseInt(String(ts), 10);
   if (!Number.isFinite(tsNum) || Math.abs(Math.floor(Date.now() / 1000) - tsNum) > TOLERANCE) return false;
   const expected = `v1,${crypto.createHmac("sha256", secret).update(`${id}.${ts}.${body}`).digest("base64")}`;
-  const a = Buffer.from(String(sig)), b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const expectedBytes = Buffer.from(expected);
+  return String(sig)
+    .split(/\s+/)
+    .filter(Boolean)
+    .some((candidate) => {
+      const candidateBytes = Buffer.from(candidate.trim());
+      return candidateBytes.length === expectedBytes.length && crypto.timingSafeEqual(candidateBytes, expectedBytes);
+    });
 }
 
 export function newSecret(prefix = "whsec_") {
