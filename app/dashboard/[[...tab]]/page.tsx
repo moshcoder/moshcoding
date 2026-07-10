@@ -672,7 +672,7 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed.");
       (d.warnings || []).forEach((w: string) => onError(w));
-      onOk(`Set the two DNS records below at your registrar, then hit Verify.`);
+      onOk(`Set all the DNS records below at your registrar, then hit Verify.`);
       await load();
     } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
   };
@@ -700,7 +700,7 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <h2>Custom domain</h2>
         <button className="btn2 ghost" disabled={busy || checking} onClick={() => load("manual")}>{checking ? "Checking…" : "↻ Verify DNS"}</button>
       </div>
-      <p className="sub">Point your own domain straight at moshcoding with two DNS records. Set them at your registrar (Porkbun, Namecheap, Cloudflare…), then hit <b>Verify DNS</b>. The TLS cert is issued automatically.</p>
+      <p className="sub">Point your own domain straight at moshcoding with the DNS records below — an ALIAS/CNAME to route traffic <b>and</b> a <code>_railway-verify</code> TXT record to prove you own it. Set <b>all</b> of them at your registrar (Porkbun, Namecheap, Cloudflare…), then hit <b>Verify DNS</b>. The TLS cert is issued automatically once ownership is verified.</p>
       {pending && (
         <p className="sub" style={{ opacity: 0.75 }}>⏳ Auto-checking your DNS every 15s — you can leave this page open and it&apos;ll go live on its own.</p>
       )}
@@ -725,7 +725,7 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
 
           {d.registered && (
             <>
-              <p className="sub" style={{ margin: "10px 0 6px" }}>Add these two records at your registrar:</p>
+              <p className="sub" style={{ margin: "10px 0 6px" }}>Add these records at your registrar (all of them — the TXT rows verify ownership):</p>
               <ul className="list">
                 {d.records.map((rec: any, i: number) => (
                   <li key={i} style={{ alignItems: "center" }}>
@@ -737,7 +737,7 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
                   </li>
                 ))}
               </ul>
-              <p className="sub" style={{ marginTop: 4 }}>Apex uses <b>ALIAS</b> (a plain CNAME isn&apos;t allowed at the root); <b>www</b> uses <b>CNAME</b> and auto-redirects to the apex.</p>
+              <p className="sub" style={{ marginTop: 4 }}>Apex uses <b>ALIAS</b> (a plain CNAME isn&apos;t allowed at the root); <b>www</b> uses <b>CNAME</b> and auto-redirects to the apex. The <b>TXT</b> <code>_railway-verify</code> rows prove ownership — without them the cert never issues, so add them too.</p>
             </>
           )}
         </div>
