@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { getAccountById, updateAccountProfile, updateAccountConfig, findOrCreateAccountByEmail, setAccountDomain, listParkedDomains } from "@/lib/db";
+import { getAccountById, updateAccountProfile, updateAccountConfig, setAccountDomain, listParkedDomains } from "@/lib/db";
+import { resolveAccountId } from "@/lib/api";
 import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain } from "@/lib/config";
 import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
@@ -11,16 +11,6 @@ export const dynamic = "force-dynamic";
 
 const PLATFORMS = ["x", "bluesky", "instagram", "tiktok", "github", "youtube"];
 const TEXT_FIELDS = ["brand", "headline", "tagline", "sub"] as const;
-
-/** Resolves the tenant account for the session: native (acct:) or CoinPay (by email). */
-async function resolveAccountId(req: NextRequest): Promise<string | null> {
-  if (!authConfigured()) return null;
-  const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!s) return null;
-  if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
-}
 
 function cleanWallet(v: unknown): string | null {
   if (typeof v !== "string") return null;

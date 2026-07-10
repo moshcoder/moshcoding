@@ -17,7 +17,10 @@ while (alive) {
 
 ## Brand kit
 
-Everything in `images/` and `videos/` is the visual identity.
+Everything in `images/` and `videos/` is the visual identity. A curated pair of
+brand reels is served at [`/videos`](https://moshcoding.com/videos) (from
+`public/videos/`); page owners can also upload their own mp4 reels per parked
+domain from the dashboard.
 
 | Asset | File |
 |-------|------|

@@ -285,6 +285,26 @@ async function initSchema(): Promise<void> {
     )
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_domain_inbound_dn ON domain_inbound_events (dn, created_at)`);
+
+  // ---- uploaded media: mp4 reels & clips, one row per file -----------------
+  // Bytes live on the DATA_DIR volume (lib/media.ts); this is just metadata so
+  // the gallery + dashboard can list, order, and stream them. `dn` is the parked
+  // domain the reel belongs to ('moshcoding.com' for the main /videos gallery).
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS media (
+      id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      dn           TEXT NOT NULL,
+      account_id   TEXT,
+      kind         TEXT NOT NULL DEFAULT 'video',
+      filename     TEXT NOT NULL,
+      orig_name    TEXT,
+      title        TEXT,
+      content_type TEXT NOT NULL DEFAULT 'video/mp4',
+      size         INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_media_dn ON media (dn, created_at)`);
 }
 
 /** Adds ADD COLUMN, ignoring the error when the column already exists. */
@@ -1042,6 +1062,88 @@ export async function listReferrals(code: string): Promise<{ email: string; doma
     status: String(r.status),
     created_at: String(r.created_at),
   }));
+}
+
+// ---- uploaded media (mp4 reels) -------------------------------------------
+
+export type Media = {
+  id: string;
+  dn: string;
+  account_id: string | null;
+  kind: string;
+  filename: string;
+  orig_name: string | null;
+  title: string | null;
+  content_type: string;
+  size: number;
+  created_at: string;
+};
+
+function rowToMedia(r: any): Media {
+  return {
+    id: String(r.id),
+    dn: String(r.dn),
+    account_id: r.account_id ? String(r.account_id) : null,
+    kind: String(r.kind || "video"),
+    filename: String(r.filename),
+    orig_name: r.orig_name ? String(r.orig_name) : null,
+    title: r.title ? String(r.title) : null,
+    content_type: String(r.content_type || "video/mp4"),
+    size: Number(r.size || 0),
+    created_at: String(r.created_at),
+  };
+}
+
+/** Inserts a media row. The caller has already written the bytes to the volume. */
+export async function addMedia(opts: {
+  id: string;
+  dn: string;
+  accountId: string | null;
+  filename: string;
+  origName?: string | null;
+  title?: string | null;
+  contentType?: string;
+  size?: number;
+}): Promise<Media> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `INSERT INTO media (id, dn, account_id, filename, orig_name, title, content_type, size)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+    args: [
+      opts.id,
+      opts.dn.trim().toLowerCase(),
+      opts.accountId,
+      opts.filename,
+      opts.origName ?? null,
+      opts.title ?? null,
+      opts.contentType || "video/mp4",
+      opts.size || 0,
+    ],
+  });
+  return rowToMedia(res.rows[0]);
+}
+
+/** Reels for a domain, newest first. */
+export async function listMedia(dn: string, limit = 200): Promise<Media[]> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT * FROM media WHERE dn = ? ORDER BY created_at DESC LIMIT ?`,
+    args: [dn.trim().toLowerCase(), Math.min(limit, 500)],
+  });
+  return res.rows.map(rowToMedia);
+}
+
+export async function getMedia(id: string): Promise<Media | null> {
+  await ensureSchema();
+  const res = await db().execute({ sql: `SELECT * FROM media WHERE id = ?`, args: [id] });
+  return res.rows[0] ? rowToMedia(res.rows[0]) : null;
+}
+
+/** Deletes the row and returns it (so the caller can unlink the file), or null. */
+export async function deleteMedia(id: string): Promise<Media | null> {
+  await ensureSchema();
+  const res = await db().execute({ sql: `DELETE FROM media WHERE id = ? RETURNING *`, args: [id] });
+  return res.rows[0] ? rowToMedia(res.rows[0]) : null;
 }
 
 /** Loads the override config for a provisioned tenant, or null if none. */

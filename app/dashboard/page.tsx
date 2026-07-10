@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { copyText } from "@/lib/clipboard";
 
 type Org = { id: string; name: string };
@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -84,6 +84,7 @@ export default function Dashboard() {
 
       <div className="tabs">
         <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>Domains</button>
+        <button className={`tab${tab === "videos" ? " on" : ""}`} onClick={() => setTab("videos")}>Videos</button>
         <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
@@ -96,6 +97,8 @@ export default function Dashboard() {
         <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "auctions" ? (
         <AuctionsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "videos" ? (
+        <VideosPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "waitlist" ? (
         <WaitlistPanel onError={(m) => say(m, false)} />
       ) : (
@@ -414,6 +417,115 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
         <button className="btn2 ghost" onClick={saveWallet}>Save wallet</button>
       </div>
+    </section>
+  );
+}
+
+function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [reels, setReels] = useState<any[] | null>(null);
+  const [title, setTitle] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const load = async (dn: string) => {
+    setActive(dn); setReels(null);
+    try {
+      const r = await fetch(`/api/media?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setReels(d.media || []);
+    } catch (e: any) { onError(e.message || "Failed to load."); setReels([]); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      const list = [...(d.parkedDomains || [])];
+      // Admins can also populate the public moshcoding.com /videos gallery.
+      if (d.account?.is_admin && !list.some((x: any) => x.domain === "moshcoding.com")) {
+        list.unshift({ domain: "moshcoding.com" });
+      }
+      setDomains(list);
+      if (list[0]) load(list[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const upload = async () => {
+    if (!active || !file) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("dn", active);
+      fd.append("file", file);
+      if (title.trim()) fd.append("title", title.trim());
+      const r = await fetch("/api/media", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("Reel uploaded. 🤘");
+      setTitle(""); setFile(null);
+      if (inputRef.current) inputRef.current.value = "";
+      await load(active);
+    } catch (e: any) { onError(e.message || "Upload failed."); } finally { setBusy(false); }
+  };
+
+  const del = async (id: string) => {
+    if (typeof window !== "undefined" && !window.confirm("Delete this reel?")) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/media/${id}`, { method: "DELETE" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Delete failed.");
+      onOk("Deleted.");
+      if (active) await load(active);
+    } catch (e: any) { onError(e.message || "Delete failed."); } finally { setBusy(false); }
+  };
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Videos</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab and you can upload reels for it here.</p></section>;
+  }
+
+  return (
+    <section className="card2">
+      <h2>Videos</h2>
+      <p className="sub">Upload mp4 reels per parked domain. Reels for moshcoding.com also show on the public <a href="/videos">/videos</a> gallery.</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>{d.domain}</button>
+        ))}
+      </div>
+      {active && (
+        <>
+          <h3 className="ed-h">Upload a reel <span className="muted">(mp4 / webm / mov, max 100 MB)</span></h3>
+          <div className="row"><input className="inp" placeholder="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+          <div className="row">
+            <input ref={inputRef} className="inp" type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <button className="btn2" disabled={busy || !file} onClick={upload}>{busy ? "Uploading…" : "Upload"}</button>
+          </div>
+
+          <h3 className="ed-h" style={{ marginTop: 18 }}>Reels ({reels ? reels.length : "…"})</h3>
+          {reels === null ? (
+            <p className="sub">Loading…</p>
+          ) : reels.length === 0 ? (
+            <p className="sub">No reels yet — upload one above.</p>
+          ) : (
+            <div className="video-grid">
+              {reels.map((m) => (
+                <figure key={m.id} className="video-cell">
+                  <video src={m.url} controls preload="metadata" playsInline />
+                  <figcaption className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{m.title}</span>
+                    <button className="btn2 ghost" disabled={busy} onClick={() => del(m.id)}>Delete</button>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
