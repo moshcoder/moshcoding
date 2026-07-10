@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Readable } from "node:stream";
 import { resolveAccountId, bad, unauthorized } from "@/lib/api";
 import { accountOwnsDomain, getMedia, deleteMedia } from "@/lib/db";
-import { mediaSize, mediaStream, deleteMediaFile } from "@/lib/media";
+import { mediaSize, mediaStream, deleteMediaFile, thumbFilename } from "@/lib/media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +59,9 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!(await accountOwnsDomain(accountId, m.dn))) return bad("You don't own that domain.", 403);
 
   const removed = await deleteMedia(id);
-  if (removed) deleteMediaFile(removed.filename);
+  if (removed) {
+    deleteMediaFile(removed.filename);
+    deleteMediaFile(thumbFilename(removed.filename)); // drop its poster too
+  }
   return NextResponse.json({ ok: true });
 }

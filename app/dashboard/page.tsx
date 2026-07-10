@@ -559,7 +559,7 @@ function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m
             <div className="video-grid">
               {reels.map((m) => (
                 <figure key={m.id} className="video-cell">
-                  <video src={m.url} controls preload="metadata" playsInline />
+                  <video src={m.url} poster={m.thumb || undefined} controls preload="metadata" playsInline />
                   <figcaption className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                     <span>{m.title}</span>
                     <button className="btn2 ghost" disabled={busy} onClick={() => del(m.id)}>Delete</button>
