@@ -563,6 +563,8 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       setData(d);
+      // Auto-populate the target URL from a known project webhook, if any.
+      setUrl((cur) => (cur.trim() ? cur : (d.knownUrls?.[0] || "")));
     } catch (e: any) { onError(e.message || "Failed to load."); setData({ webhooks: [], events: [] }); }
   };
 
@@ -607,9 +609,12 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
           <h3 className="ed-h">Inbound URL <span className="muted">(send events here — no app needed)</span></h3>
           <div className="row"><input className="inp" readOnly value={data.inboundUrl || ""} /><button className="btn2 ghost" onClick={() => copyText(data.inboundUrl || "")}>Copy</button></div>
 
-          <h3 className="ed-h">Outbound targets</h3>
+          <h3 className="ed-h">Outbound targets{data.knownUrls?.length ? <span className="muted"> · pre-filled from your project webhooks</span> : null}</h3>
           <div className="row">
-            <input className="inp" placeholder="https://your-app.com/hook  or a Discord/Slack/Zapier URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <input className="inp" list="known-webhook-urls" placeholder="https://your-app.com/hook  or a Discord/Slack/Zapier URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+            {data.knownUrls?.length ? (
+              <datalist id="known-webhook-urls">{data.knownUrls.map((u: string) => <option key={u} value={u} />)}</datalist>
+            ) : null}
             <button className="btn2" disabled={busy || !url.trim()} onClick={() => { act({ url: url.trim() }, "Webhook added."); setUrl(""); }}>Add</button>
             <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "test" }, "Test event dispatched.")}>Send test</button>
           </div>

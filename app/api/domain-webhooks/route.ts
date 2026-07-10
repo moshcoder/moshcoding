@@ -8,8 +8,10 @@ import {
   addDomainWebhook,
   deleteDomainWebhook,
   listInboundEvents,
+  distinctWebhookUrls,
 } from "@/lib/db";
 import { fireDomainEvent, newSecret, isInternalUrl } from "@/lib/webhooks";
+import { listAccessibleProjectIds } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,12 +38,23 @@ export async function GET(req: NextRequest) {
   if (!accountId || !(await accountOwnsDomain(accountId, dn))) {
     return NextResponse.json({ error: "You don't own this domain." }, { status: 403 });
   }
+  // Suggest target URLs the user already uses on their project webhooks
+  // (orgs → teams → projects), so a domain webhook can auto-populate.
+  const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
+  let knownUrls: string[] = [];
+  if (s?.sub) {
+    try { knownUrls = await distinctWebhookUrls(await listAccessibleProjectIds(s.sub)); } catch { /* best-effort */ }
+  }
+
   const [webhooks, events] = await Promise.all([listDomainWebhooks(dn), listInboundEvents(dn, 25)]);
+  // Don't re-suggest URLs already added as targets for this domain.
+  const have = new Set(webhooks.map((w) => w.url));
   return NextResponse.json({
     dn,
     inboundUrl: inboundUrl(req, dn),
     webhooks: webhooks.map((w) => ({ id: w.id, url: w.url, secret: w.secret, active: w.active, created_at: w.created_at })),
     events,
+    knownUrls: knownUrls.filter((u) => !have.has(u)),
   });
 }
 
