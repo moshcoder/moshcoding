@@ -64,7 +64,7 @@ export default async function Page({
         socials: sp.socials, fallback: sp.fallback, social, style: sp.style, linkParams, affParams,
         hashtags: sp.hashtags, fgRgba: sp.fg_rgba ?? sp.rgba, bgRgba: sp.bg_rgba, stream: sp.stream,
         brand: sp.brand, headline: sp.headline, tagline: sp.tagline, sub: sp.sub,
-        codeBlock: sp.code_block, tenantOverride,
+        codeBlock: sp.code_block, adBlock: sp.ad_block, tenantOverride,
       })}
     />
   );

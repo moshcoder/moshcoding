@@ -28,10 +28,45 @@ export type TenantConfig = {
   stream: string | null;
   /** Optional ?code_block= snippet rendered in a monospace block (React-escaped). */
   codeBlock: string | null;
+  /** CrawlProof ad slot (UUID). Defaults on for every tenant; null = disabled. */
+  adSlot: string | null;
+  /** CrawlProof ad format token, e.g. "banner_300x250". */
+  adFormat: string;
 };
 
 /** Default moshcoding accent (poison lime). Used unless an rgba override is given. */
 export const DEFAULT_ACCENT = "#9EF01A";
+
+/**
+ * CrawlProof ad defaults — every parked domain shows this above the footer
+ * unless overridden with ?ad_block= (a data-cp-ad snippet, or "slot|format"),
+ * or disabled with ?ad_block=none.
+ */
+export const DEFAULT_AD_SLOT = "fd4ff2e8-db11-438f-8151-3054aa5e1e4c";
+export const DEFAULT_AD_FORMAT = "banner_300x250";
+const AD_UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/**
+ * Resolve an ?ad_block= (or saved) override into a validated {slot,format}.
+ *   undefined → not provided (caller falls back to the default ad)
+ *   null      → explicitly disabled (none/off/false/0/empty)
+ *   {slot,format} → a custom CrawlProof unit
+ * We never render the raw HTML — only the extracted UUID slot + format token —
+ * so a hostile ?ad_block= value can't inject markup/script.
+ */
+export function parseAdBlock(v: unknown): { slot: string; format: string } | null | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  if (!t) return null;
+  if (/^(none|off|false|0|no)$/i.test(t)) return null;
+  // Accept a raw <div data-cp-ad …> snippet, a bare UUID, or "slot|format".
+  const slotM = t.match(/data-slot=["']?([0-9a-f-]{36})/i) || t.match(AD_UUID_RE);
+  const slot = slotM ? (slotM[1] || slotM[0]) : null;
+  if (!slot || !AD_UUID_RE.test(slot)) return undefined; // no valid slot → use default
+  const fmtM = t.match(/data-format=["']?([a-z0-9_]+)/i) || t.match(/\|\s*([a-z0-9_]+)\s*$/i);
+  const format = fmtM ? fmtM[1].slice(0, 40) : DEFAULT_AD_FORMAT;
+  return { slot: slot.toLowerCase(), format };
+}
 
 /** A ?code_block= snippet: bounded plain text (rendered escaped in a <pre>). */
 export function cleanCode(v: unknown): string | null {
@@ -203,6 +238,8 @@ export type TenantOverrides = {
   stream?: string | null;
   /** ?code_block= raw snippet text (rendered escaped in a <pre>). */
   codeBlock?: string | null;
+  /** ?ad_block= override: a data-cp-ad snippet / "slot|format" / "none" to disable. */
+  adBlock?: string | null;
   /** ?brand= / ?headline= / ?tagline= / ?sub= copy overrides. */
   brand?: string | null;
   headline?: string | null;
@@ -366,5 +403,13 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     bgAccent: coerceRgba(opts.bgRgba) || coerceRgba(ov.bgRgba),
     stream: fallbackUrl(opts.stream) || fallbackUrl(ov.stream),
     codeBlock: cleanCode(opts.codeBlock) || cleanCode(ov.codeBlock),
+    // Ad: ?ad_block= query wins, then the saved tenant value, else the default
+    // CrawlProof unit. `null` from either (e.g. ad_block=none) disables it.
+    ...(() => {
+      const q = parseAdBlock(opts.adBlock);
+      const saved = parseAdBlock(ov.adBlock);
+      const ad = q !== undefined ? q : saved !== undefined ? saved : { slot: DEFAULT_AD_SLOT, format: DEFAULT_AD_FORMAT };
+      return { adSlot: ad ? ad.slot : null, adFormat: ad ? ad.format : DEFAULT_AD_FORMAT };
+    })(),
   };
 }

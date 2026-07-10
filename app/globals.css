@@ -226,6 +226,8 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .lt-go { color: var(--ash); font-size: 13px; }
 .lt:hover .lt-go { color: var(--tenant-accent, var(--acid)); }
 
+.t-ad { display: flex; justify-content: center; margin: 34px auto 0; max-width: 100%; min-height: 250px; }
+.t-ad [data-cp-ad] { max-width: 100%; }
 .t-foot { font-family: var(--mono); font-size: 12px; color: var(--ash); margin-top: 40px; }
 .t-foot a { color: var(--acid); }
 .t-foot a:hover { text-decoration: underline; }

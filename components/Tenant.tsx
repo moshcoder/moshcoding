@@ -2,6 +2,7 @@ import type { TenantConfig } from "@/lib/config";
 import WaitlistForm from "./WaitlistForm";
 import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
+import CrawlProofAd from "./CrawlProofAd";
 
 export default function Tenant({ cfg }: { cfg: TenantConfig }) {
   const accentStyle = {
@@ -77,6 +78,8 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
             ))}
           </div>
         )}
+
+        {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
         <footer className="t-foot">
           &copy; 2026 <a href="https://moshcoding.com" rel="noopener noreferrer">powered by moshcoding.com</a>
