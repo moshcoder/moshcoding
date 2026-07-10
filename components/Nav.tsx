@@ -22,6 +22,7 @@ export default function Nav() {
         <a href="#chaos">The one-liner</a>
         <a href="#waitlist">Waitlist</a>
         <a href="/badges">Badges</a>
+        <a href="/videos">Videos</a>
         <a className="ghost" href="https://github.com/moshcoder/moshcoding" target="_blank" rel="noopener noreferrer">GitHub</a>
         <AuthSlot />
       </nav>
