@@ -1111,6 +1111,15 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
   const [provider, setProvider] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
 
+  const formatEvents = (raw: unknown) => {
+    try {
+      const events = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return Array.isArray(events) && events.length ? events.join(", ") : "all events";
+    } catch {
+      return "invalid event config";
+    }
+  };
+
   const load = useCallback(async () => {
     try {
       const [a, b] = await Promise.all([
@@ -1140,7 +1149,7 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
         <button className="btn2" disabled={!url.trim()} onClick={() => { post(`/api/projects/${project.id}/webhooks`, { url: url.trim() }, "Outbound"); setUrl(""); }}>Add outbound</button>
         <button className="btn2 ghost" onClick={() => post(`/api/projects/${project.id}/webhooks/test`, {}, "").then(() => onError("Test event dispatched."))}>Send test</button>
       </div>
-      <ul className="list">{out.map((e) => <li key={e.id}><span>↗ {e.url}</span><span className="muted">{JSON.parse(e.events).join(", ")}</span></li>)}
+      <ul className="list">{out.map((e) => <li key={e.id}><span>↗ {e.url}</span><span className="muted">{formatEvents(e.events)}</span></li>)}
         {out.length === 0 && <li className="muted">No outbound endpoints yet.</li>}</ul>
       <div className="row" style={{ marginTop: 14 }}>
         <input className="inp" placeholder="inbound provider (e.g. github)" value={provider} onChange={(e) => setProvider(e.target.value)} />
