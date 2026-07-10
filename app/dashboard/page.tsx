@@ -181,11 +181,17 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [text, setText] = useState<Record<string, string>>({ brand: "", headline: "", tagline: "", sub: "" });
   const [wallet, setWallet] = useState("");
   const [domain, setDomain] = useState("");
+  const [repo, setRepo] = useState("");
+  const [assetPattern, setAssetPattern] = useState("");
+  const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   const hydrate = (a: AccountView) => {
     const c = a.config || {};
     setDomain(a.domain || "");
+    setRepo(c.repo || "");
+    setAssetPattern(c.assetPattern || "");
+    setAssets(c.assets || []);
     setSocials(c.socials || {});
     setLinks(c.customLinks || []);
     setSponsors(c.sponsors || []);
@@ -222,6 +228,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
             stream: stream.trim(),
             fgRgba: fgRgba.trim(),
             bgRgba: bgRgba.trim(),
+            repo: repo.trim(),
+            assetPattern: assetPattern.trim(),
             ...text,
           },
         }),
@@ -230,7 +238,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       if (!res.ok) throw new Error(data.error);
       setAcct(data.account);
       hydrate(data.account);
-      onOk(acct.status === "active" ? "Saved & published to your page. 🤘" : "Saved.");
+      if (data.warning) onError(data.warning);
+      else onOk(acct.status === "active" ? "Saved & published to your page. 🤘" : "Saved.");
     } catch (e: any) { onError(e.message || "Couldn't save."); }
     finally { setSaving(false); }
   };
@@ -283,6 +292,16 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <input className="inp" placeholder="foreground (fg_rgba)" value={fgRgba} onChange={(e) => setFgRgba(e.target.value)} />
         <input className="inp" placeholder="background (bg_rgba)" value={bgRgba} onChange={(e) => setBgRgba(e.target.value)} />
       </div>
+
+      <h3 className="ed-h">GitHub assets <span className="muted">(pull images from a repo onto your page)</span></h3>
+      <div className="row"><input className="inp" placeholder="owner/repo — e.g. moshcoder/moshcoding" value={repo} onChange={(e) => setRepo(e.target.value)} /></div>
+      <div className="row"><input className="inp" placeholder="path glob — e.g. images/*_thumb.png" value={assetPattern} onChange={(e) => setAssetPattern(e.target.value)} /></div>
+      {assets.length > 0 && (
+        <div className="t-assets" style={{ margin: "10px 0 0" }}>
+          {assets.slice(0, 12).map((a, i) => <span key={i} className="t-asset"><img src={a.url} alt={a.label} loading="lazy" /></span>)}
+        </div>
+      )}
+      {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN.</p>}
 
       <h3 className="ed-h">CoinPay payout wallet</h3>
       <div className="row"><input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} /></div>

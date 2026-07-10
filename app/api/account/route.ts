@@ -4,6 +4,7 @@ import { getAccountById, updateAccountProfile, updateAccountConfig, findOrCreate
 import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain } from "@/lib/config";
 import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
+import { listRepoAssets, normalizeRepo } from "@/lib/github";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,11 @@ function sanitizeConfig(body: any): Record<string, any> {
   for (const k of TEXT_FIELDS) {
     if (typeof body?.[k] === "string" && body[k].trim()) c[k] = body[k].trim().slice(0, 120);
   }
+
+  // Connected GitHub repo + asset glob (resolved to image URLs in POST).
+  const repo = normalizeRepo(body?.repo);
+  if (repo) c.repo = repo;
+  if (typeof body?.assetPattern === "string" && body.assetPattern.trim()) c.assetPattern = body.assetPattern.trim().slice(0, 120);
   return c;
 }
 
@@ -118,13 +124,26 @@ export async function POST(req: NextRequest) {
   // Full tenant config CRUD — replace the blob when `config` (or any config
   // field) is present, then re-provision the live page.
   let acct = await getAccountById(id);
-  if (body?.config || body?.socials || body?.customLinks || body?.sponsors || body?.hashtags ||
-      body?.stream !== undefined || body?.fgRgba !== undefined || body?.bgRgba !== undefined ||
-      TEXT_FIELDS.some((k) => body?.[k] !== undefined)) {
-    const config = sanitizeConfig(body?.config ? body.config : body);
+  let warning: string | undefined;
+  const src = body?.config ? body.config : body;
+  if (body?.config || src?.socials || src?.customLinks || src?.sponsors || src?.hashtags ||
+      src?.stream !== undefined || src?.fgRgba !== undefined || src?.bgRgba !== undefined ||
+      src?.repo !== undefined || TEXT_FIELDS.some((k) => src?.[k] !== undefined)) {
+    const config = sanitizeConfig(src);
+    // Pull image assets from the connected repo (best-effort; don't wipe the
+    // existing gallery on a transient GitHub error).
+    if (config.repo) {
+      try {
+        config.assets = await listRepoAssets(config.repo, { pattern: config.assetPattern });
+      } catch (e: any) {
+        warning = `Couldn't load assets from ${config.repo}: ${e?.message || e}`;
+        const prior = (acct?.config as any)?.assets;
+        if (Array.isArray(prior)) config.assets = prior;
+      }
+    }
     acct = await updateAccountConfig(id, config);
   }
   if (!acct) return NextResponse.json({ error: "account not found" }, { status: 404 });
   if (acct.status === "active") await provisionTenant(acct);
-  return NextResponse.json({ account: view(acct) });
+  return NextResponse.json({ account: view(acct), ...(warning ? { warning } : {}) });
 }

@@ -66,6 +66,16 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           </nav>
         )}
 
+        {cfg.assets.length > 0 && (
+          <div className="t-assets" aria-label="Assets">
+            {cfg.assets.map((a, i) => (
+              <a key={i} className="t-asset" href={a.url} target="_blank" rel="noopener noreferrer" title={a.label}>
+                <img src={a.url} alt={a.label} loading="lazy" />
+              </a>
+            ))}
+          </div>
+        )}
+
         <footer className="t-foot">
           &copy; 2026 <a href="https://moshcoding.com" rel="noopener noreferrer">powered by moshcoding.com</a>
         </footer>

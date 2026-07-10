@@ -18,6 +18,8 @@ export type TenantConfig = {
   sponsors: TenantLink[];
   /** Bare hashtag keywords (rendered as #<kw>). Defaults to the domain slug. */
   hashtags: string[];
+  /** Image assets pulled from a connected GitHub repo, rendered as a gallery. */
+  assets: TenantLink[];
   /** Genres from ?style=metal,punk — drives the AI hero-image generation. */
   styles: string[];
   /** Optional background accent (rgba) from ?bg_rgba=; null = use the theme default. */
@@ -316,6 +318,10 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams), ...cleanLinks(ov.customLinks, "link")];
   // Sponsors: ?aff_linkN= query + saved sponsors.
   const sponsors = [...parseSponsors(opts.affParams), ...cleanLinks(ov.sponsors, "sponsor")];
+  // GitHub repo image assets (saved with {name,url}); rendered as a gallery.
+  const assets = Array.isArray(ov.assets)
+    ? ov.assets.filter((a: any) => a && a.url).map((a: any) => ({ label: String(a.name || a.label || ""), url: String(a.url), kind: "image" }))
+    : [];
   // Hashtags: ?hashtags= query, else saved config, else the domain slug.
   const parsedTags = parseHashtags(opts.hashtags);
   const savedTags = Array.isArray(ov.hashtags)
@@ -340,6 +346,7 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     links,
     sponsors,
     hashtags,
+    assets,
     styles: parseStyles(opts.style),
     // query wins, then saved config, then the default moshcoding green.
     accent: coerceRgba(opts.fgRgba) || coerceRgba(ov.fgRgba) || DEFAULT_ACCENT,

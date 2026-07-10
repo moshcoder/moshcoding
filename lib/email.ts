@@ -21,11 +21,31 @@ export function appBaseUrl(): string {
 
 type SendResult = { ok: boolean; id?: string; error?: string };
 
+/** Just the address part of RESEND_FROM (the verified sending mailbox). */
+function sendingAddress(): string {
+  const raw = process.env.RESEND_FROM || "moshcoding <noreply@moshcoding.com>";
+  const m = raw.match(/<([^>]+)>/);
+  if (m) return m[1].trim();
+  return raw.includes("@") ? raw.trim() : "noreply@moshcoding.com";
+}
+
+/**
+ * Branded From: the display name is the tenant brand, the mailbox stays on the
+ * Resend-verified moshcoding.com domain (we can't send *from* a tenant's domain
+ * unless it's verified). e.g. "Moshcode <noreply@moshcoding.com>".
+ */
+function brandedFrom(brand?: string): string {
+  if (!brand) return fromAddress();
+  const clean = brand.replace(/["<>]/g, "").trim().slice(0, 60) || "moshcoding";
+  return `${clean} <${sendingAddress()}>`;
+}
+
 async function send(opts: {
   to: string;
   subject: string;
   html: string;
   text: string;
+  from?: string;
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "RESEND_API_KEY not set" };
@@ -36,7 +56,7 @@ async function send(opts: {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      from: fromAddress(),
+      from: opts.from || fromAddress(),
       to: [opts.to],
       subject: opts.subject,
       html: opts.html,
@@ -90,7 +110,7 @@ export function sendWaitlistVerification(opts: {
     </td></tr>
   </table>
 </body></html>`;
-  return send({ to: opts.email, subject, html, text });
+  return send({ to: opts.email, subject, html, text, from: brandedFrom(opts.brand) });
 }
 
 /** Notifies that a GitHub PR or issue was closed. */
