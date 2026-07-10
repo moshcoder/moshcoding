@@ -29,7 +29,8 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates" | "dns">("page");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -42,6 +43,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetch("/api/me").then((r) => r.json()).then((m) => setMe(m)).catch(() => setMe(null));
+    fetch("/api/account").then((r) => r.json()).then((d) => setIsAdmin(Boolean(d.account?.is_admin))).catch(() => {});
   }, []);
 
   const wrap = (fn: () => Promise<any>) => async () => {
@@ -89,9 +91,12 @@ export default function Dashboard() {
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
+        {isAdmin && <button className={`tab${tab === "dns" ? " on" : ""}`} onClick={() => setTab("dns")}>DNS</button>}
       </div>
 
-      {tab === "affiliates" ? (
+      {tab === "dns" ? (
+        <DomainsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "webhooks" ? (
         <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
@@ -589,6 +594,89 @@ function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m
           )}
         </>
       )}
+    </section>
+  );
+}
+
+function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [data, setData] = useState<any>(undefined);
+  const [newDomain, setNewDomain] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = async (announce?: string) => {
+    try {
+      const r = await fetch("/api/admin/domains");
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed to load.");
+      setData(d);
+      if (announce) onOk(announce);
+    } catch (e: any) { onError(e.message || "Failed."); setData({ configured: true, domains: [] }); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const add = async () => {
+    if (!newDomain.trim()) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/domains", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ domain: newDomain.trim() }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Add failed.");
+      (d.warnings || []).forEach((w: string) => onError(w));
+      onOk(`Added ${newDomain.trim()} — set the DNS records below at your registrar.`);
+      setNewDomain("");
+      await load();
+    } catch (e: any) { onError(e.message || "Add failed."); } finally { setBusy(false); }
+  };
+
+  const remove = async (domain: string) => {
+    if (typeof window !== "undefined" && !window.confirm(`Remove ${domain} (and its www)?`)) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/domains?domain=${encodeURIComponent(domain)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Remove failed.");
+      onOk(`Removed ${domain}.`); await load();
+    } catch (e: any) { onError(e.message || "Remove failed."); } finally { setBusy(false); }
+  };
+
+  if (data === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!data.configured) {
+    return <section className="card2"><h2>DNS &amp; custom domains</h2><p className="sub">{data.error || "Set RAILWAY_API_TOKEN to manage custom domains from here."}</p></section>;
+  }
+
+  const domains = data.domains || [];
+  return (
+    <section className="card2">
+      <h2>DNS &amp; custom domains</h2>
+      <p className="sub">Point a parked domain straight at moshcoding via <b>DNS</b> — no iframes. Add it, set the two records at your registrar, then hit <b>Verify DNS</b>.</p>
+      <div className="row">
+        <input className="inp" placeholder="moshscript.com" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+        <button className="btn2" disabled={busy || !newDomain.trim()} onClick={add}>Add domain</button>
+        <button className="btn2 ghost" disabled={busy} onClick={() => load("DNS rechecked.")}>↻ Verify DNS</button>
+      </div>
+      <ul className="list">
+        {domains.length === 0 && <li className="muted">No custom domains yet — add one above.</li>}
+        {domains.map((d: any) => (
+          <li key={d.id} style={{ alignItems: "flex-start" }}>
+            <span>
+              <b>{d.domain}</b>{" "}
+              {d.propagated
+                ? <span className="pill">✓ live</span>
+                : <span className="pill" style={{ opacity: 0.7 }}>⏳ pending</span>}
+              {d.records.map((rec: any, i: number) => (
+                <span key={i} className="muted" style={{ display: "block", fontFamily: "var(--mono)", fontSize: 12, marginTop: 4 }}>
+                  {rec.type} <b>{rec.host}</b> → {rec.value} <span style={{ opacity: 0.6 }}>({rec.status})</span>
+                </span>
+              ))}
+            </span>
+            <span className="row-actions">
+              {d.records[0] && <button className="btn2 ghost" onClick={() => copyText(d.records[0].value).then((ok) => onOk(ok ? "Copied. 🤘" : "Copy failed — select it."))}>Copy target</button>}
+              {!d.domain.startsWith("www.") && <button className="btn2 ghost" disabled={busy} onClick={() => remove(d.domain)}>Remove</button>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="sub" style={{ marginTop: 8 }}>Apex domains use an <b>ALIAS</b> record (a plain CNAME isn&apos;t allowed at the root); <b>www</b> uses a <b>CNAME</b> and auto-redirects to the apex. Railway issues the TLS cert automatically once DNS resolves.</p>
     </section>
   );
 }
