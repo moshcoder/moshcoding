@@ -824,6 +824,19 @@ export async function recordInboundEvent(opts: { dn: string; source?: string | n
   });
 }
 
+/** Distinct outbound webhook URLs across the given project ids — used to
+ *  suggest/pre-fill a domain webhook target from the user's project webhooks. */
+export async function distinctWebhookUrls(projectIds: string[]): Promise<string[]> {
+  await ensureSchema();
+  if (!projectIds.length) return [];
+  const placeholders = projectIds.map(() => "?").join(",");
+  const r = await db().execute({
+    sql: `SELECT DISTINCT url FROM webhook_endpoints WHERE project_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 25`,
+    args: projectIds,
+  });
+  return r.rows.map((x: any) => String(x.url)).filter(Boolean);
+}
+
 export async function listInboundEvents(dn: string, limit = 50): Promise<{ id: string; source: string | null; event_type: string | null; payload: string; created_at: string }[]> {
   await ensureSchema();
   const r = await db().execute({
