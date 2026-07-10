@@ -29,7 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "affiliates">("page");
+  const [tab, setTab] = useState<"page" | "waitlist" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -75,11 +75,14 @@ export default function Dashboard() {
 
       <div className="tabs">
         <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
+        <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
       </div>
 
       {tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "waitlist" ? (
+        <WaitlistPanel onError={(m) => say(m, false)} />
       ) : (
       <>
       <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
@@ -310,6 +313,67 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save & publish"}</button>
         {acct.pageUrl && <a className="btn2 ghost" href={acct.pageUrl} target="_blank" rel="noopener noreferrer">Preview ↗</a>}
       </div>
+    </section>
+  );
+}
+
+function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [signups, setSignups] = useState<any[] | null>(null);
+
+  const load = async (dn: string) => {
+    setActive(dn); setSignups(null);
+    try {
+      const r = await fetch(`/api/waitlist/manage?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setSignups(d.signups || []);
+    } catch (e: any) { onError(e.message || "Failed to load."); setSignups([]); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setDomains(d.parkedDomains || []);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab and its waitlist shows up here.</p></section>;
+  }
+
+  return (
+    <section className="card2">
+      <h2>Waitlist</h2>
+      <p className="sub">Each parked domain keeps its own waitlist.</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>
+            {d.domain} <span className="muted">({d.count})</span>
+          </button>
+        ))}
+      </div>
+      {active && (
+        <>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="ed-h">{active} — {signups ? signups.length : "…"} signups</h3>
+            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv`}>Export CSV</a>
+          </div>
+          <ul className="list">
+            {signups === null && <li className="muted">Loading…</li>}
+            {signups && signups.length === 0 && <li className="muted">No signups yet — share your page.</li>}
+            {signups && signups.map((s, i) => (
+              <li key={i}>
+                <span>{s.email}</span>
+                <span className="muted">{s.verified ? "✓ confirmed" : "pending"}{s.ref ? ` · ref:${s.ref}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }

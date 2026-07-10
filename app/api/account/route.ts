@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { getAccountById, updateAccountProfile, updateAccountConfig, findOrCreateAccountByEmail, setAccountDomain } from "@/lib/db";
+import { getAccountById, updateAccountProfile, updateAccountConfig, findOrCreateAccountByEmail, setAccountDomain, listParkedDomains } from "@/lib/db";
 import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain } from "@/lib/config";
 import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
@@ -96,9 +96,9 @@ function view(acct: any) {
 
 export async function GET(req: NextRequest) {
   const id = await resolveAccountId(req);
-  if (!id) return NextResponse.json({ account: null });
+  if (!id) return NextResponse.json({ account: null, parkedDomains: [] });
   const acct = await getAccountById(id);
-  return NextResponse.json({ account: acct ? view(acct) : null });
+  return NextResponse.json({ account: acct ? view(acct) : null, parkedDomains: await listParkedDomains(id) });
 }
 
 export async function POST(req: NextRequest) {
@@ -145,5 +145,5 @@ export async function POST(req: NextRequest) {
   }
   if (!acct) return NextResponse.json({ error: "account not found" }, { status: 404 });
   if (acct.status === "active") await provisionTenant(acct);
-  return NextResponse.json({ account: view(acct), ...(warning ? { warning } : {}) });
+  return NextResponse.json({ account: view(acct), parkedDomains: await listParkedDomains(id), ...(warning ? { warning } : {}) });
 }

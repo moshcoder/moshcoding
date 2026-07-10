@@ -217,6 +217,18 @@ async function initSchema(): Promise<void> {
       created_at     TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // ---- parked domains: the domains an account owns. Each domain's waitlist is
+  // kept separate (signups.dn) and managed from the dashboard.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS parked_domains (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      account_id TEXT NOT NULL,
+      domain     TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_parked_account ON parked_domains (account_id)`);
 }
 
 /** Adds ADD COLUMN, ignoring the error when the column already exists. */
@@ -375,7 +387,9 @@ export async function createAccount(opts: {
       JSON.stringify(seedConfig),
     ],
   });
-  return rowToAccount(res.rows[0]);
+  const account = rowToAccount(res.rows[0]);
+  if (account.domain) await addParkedDomain(account.id, account.domain);
+  return account;
 }
 
 export async function getAccountByEmail(
@@ -419,7 +433,64 @@ export async function setAccountDomain(id: string, domain: string): Promise<Acco
     sql: `UPDATE accounts SET domain = ? WHERE id = ? RETURNING *`,
     args: [domain, id],
   });
+  await addParkedDomain(id, domain); // register it as a parked domain too
   return res.rows[0] ? rowToAccount(res.rows[0]) : null;
+}
+
+// ---- parked domains -------------------------------------------------------
+
+export type ParkedDomain = { domain: string; count: number; verified: number; created_at: string };
+
+/** Registers a domain to an account (idempotent; reassigns if re-claimed). */
+export async function addParkedDomain(accountId: string, domain: string): Promise<void> {
+  await ensureSchema();
+  await db().execute({
+    sql: `INSERT INTO parked_domains (account_id, domain) VALUES (?, ?)
+          ON CONFLICT (domain) DO UPDATE SET account_id = excluded.account_id`,
+    args: [accountId, domain.trim().toLowerCase()],
+  });
+}
+
+/** Lists an account's parked domains with their waitlist counts. */
+export async function listParkedDomains(accountId: string): Promise<ParkedDomain[]> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT p.domain, p.created_at,
+                 (SELECT count(*) FROM signups s WHERE s.dn = p.domain) AS count,
+                 (SELECT count(*) FROM signups s WHERE s.dn = p.domain AND s.verified_at IS NOT NULL) AS verified
+          FROM parked_domains p WHERE p.account_id = ? ORDER BY p.created_at DESC`,
+    args: [accountId],
+  });
+  return res.rows.map((r) => ({
+    domain: String(r.domain),
+    count: Number(r.count || 0),
+    verified: Number(r.verified || 0),
+    created_at: String(r.created_at),
+  }));
+}
+
+export async function ownsParkedDomain(accountId: string, domain: string): Promise<boolean> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT 1 FROM parked_domains WHERE account_id = ? AND domain = ?`,
+    args: [accountId, domain.trim().toLowerCase()],
+  });
+  return res.rows.length > 0;
+}
+
+/** The waitlist for one domain (that the caller owns). */
+export async function listDomainSignups(domain: string, limit = 1000): Promise<{ email: string; verified: boolean; ref: string | null; created_at: string }[]> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT email, verified_at, ref, created_at FROM signups WHERE dn = ? ORDER BY created_at DESC LIMIT ?`,
+    args: [domain.trim().toLowerCase(), limit],
+  });
+  return res.rows.map((r) => ({
+    email: String(r.email),
+    verified: Boolean(r.verified_at),
+    ref: r.ref ? String(r.ref) : null,
+    created_at: String(r.created_at),
+  }));
 }
 
 export async function getAccountById(id: string): Promise<Account | null> {
