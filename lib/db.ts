@@ -205,6 +205,18 @@ async function initSchema(): Promise<void> {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // ---- affiliates: one per account, a ?ref= code + commission rate ----------
+  // Free plan is floored at 80% (min payout). Paid plan ($1/mo) can lower it.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS affiliates (
+      account_id     TEXT PRIMARY KEY,
+      code           TEXT NOT NULL UNIQUE,
+      commission_pct INTEGER NOT NULL DEFAULT 80,
+      plan           TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free','paid')),
+      created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 }
 
 /** Adds ADD COLUMN, ignoring the error when the column already exists. */
@@ -489,6 +501,77 @@ export async function upsertTenant(domain: string, accountId: string | null, con
             account_id = excluded.account_id, config = excluded.config, updated_at = datetime('now')`,
     args: [domain.trim().toLowerCase(), accountId, JSON.stringify(config || {})],
   });
+}
+
+// ---- affiliates -----------------------------------------------------------
+
+export const AFFILIATE_FLOOR = 80;
+
+export type Affiliate = { account_id: string; code: string; commission_pct: number; plan: "free" | "paid" };
+
+function rowToAffiliate(r: any): Affiliate {
+  return {
+    account_id: String(r.account_id),
+    code: String(r.code),
+    commission_pct: Number(r.commission_pct ?? AFFILIATE_FLOOR),
+    plan: r.plan === "paid" ? "paid" : "free",
+  };
+}
+
+export async function getAffiliate(accountId: string): Promise<Affiliate | null> {
+  await ensureSchema();
+  const res = await db().execute({ sql: `SELECT * FROM affiliates WHERE account_id = ?`, args: [accountId] });
+  return res.rows[0] ? rowToAffiliate(res.rows[0]) : null;
+}
+
+/** Enrolls the account as an affiliate (idempotent). Generates a unique code. */
+export async function enrollAffiliate(accountId: string): Promise<Affiliate> {
+  await ensureSchema();
+  const existing = await getAffiliate(accountId);
+  if (existing) return existing;
+  // Derive a short code; retry a couple times on the unlikely unique collision.
+  for (let i = 0; i < 5; i++) {
+    const code = randomBytes(5).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase();
+    try {
+      const res = await db().execute({
+        sql: `INSERT INTO affiliates (account_id, code) VALUES (?, ?) RETURNING *`,
+        args: [accountId, code],
+      });
+      return rowToAffiliate(res.rows[0]);
+    } catch (err: any) {
+      if (!/unique/i.test(String(err?.message))) throw err;
+    }
+  }
+  throw new Error("could not allocate an affiliate code");
+}
+
+/** Sets the commission %, enforcing the 80% floor for free-plan affiliates. */
+export async function setAffiliateCommission(accountId: string, pct: number): Promise<Affiliate | null> {
+  await ensureSchema();
+  const aff = await getAffiliate(accountId);
+  if (!aff) return null;
+  let p = Math.max(1, Math.min(100, Math.round(pct)));
+  if (aff.plan !== "paid" && p < AFFILIATE_FLOOR) p = AFFILIATE_FLOOR;
+  const res = await db().execute({
+    sql: `UPDATE affiliates SET commission_pct = ? WHERE account_id = ? RETURNING *`,
+    args: [p, accountId],
+  });
+  return res.rows[0] ? rowToAffiliate(res.rows[0]) : null;
+}
+
+/** Accounts that signed up with this affiliate's ref code. */
+export async function listReferrals(code: string): Promise<{ email: string; domain: string | null; status: string; created_at: string }[]> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `SELECT email, domain, status, created_at FROM accounts WHERE ref = ? ORDER BY created_at DESC LIMIT 200`,
+    args: [code],
+  });
+  return res.rows.map((r) => ({
+    email: String(r.email),
+    domain: r.domain ? String(r.domain) : null,
+    status: String(r.status),
+    created_at: String(r.created_at),
+  }));
 }
 
 /** Loads the override config for a provisioned tenant, or null if none. */

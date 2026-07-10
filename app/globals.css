@@ -300,6 +300,12 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .qhelp-ex-list a:hover { text-decoration: underline; }
 @media (max-width: 520px) { .qhelp-row { grid-template-columns: 1fr; gap: 3px; } }
 
+/* Dashboard tabs */
+.tabs { display: flex; gap: 8px; margin: 4px 0 18px; border-bottom: 1px solid var(--line); }
+.tab { font-family: var(--mono); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; background: none; border: none; color: var(--ash); padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab:hover { color: var(--bone); }
+.tab.on { color: var(--acid); border-bottom-color: var(--acid); }
+
 /* Dashboard editor section headings */
 .ed-h { margin: 18px 0 8px; font-size: 13px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; color: #cfcfcf; }
 .ed-h .muted { text-transform: none; letter-spacing: 0; }

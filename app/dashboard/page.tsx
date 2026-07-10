@@ -28,6 +28,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
+  const [tab, setTab] = useState<"page" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -71,6 +72,15 @@ export default function Dashboard() {
       </div>
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
 
+      <div className="tabs">
+        <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
+        <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
+      </div>
+
+      {tab === "affiliates" ? (
+        <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : (
+      <>
       <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
 
       <section className="card2">
@@ -114,6 +124,8 @@ export default function Dashboard() {
         <h2>Invite a teammate</h2>
         <InviteForm teams={teams} onDone={(m, ok) => say(m, ok)} />
       </section>
+      </>
+      )}
     </div>
   );
 }
@@ -274,6 +286,87 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save & publish"}</button>
         {acct.pageUrl && <a className="btn2 ghost" href={acct.pageUrl} target="_blank" rel="noopener noreferrer">Preview ↗</a>}
       </div>
+    </section>
+  );
+}
+
+function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [data, setData] = useState<any>(undefined);
+  const [pct, setPct] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    fetch("/api/affiliate").then((r) => r.json()).then((d) => {
+      setData(d);
+      if (d.affiliate) setPct(String(d.affiliate.commission_pct));
+    }).catch(() => setData({ affiliate: null, floor: 80 }));
+  useEffect(() => { load(); }, []);
+
+  if (data === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  const aff = data.affiliate;
+  const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => onOk("Copied. 🤘")).catch(() => {});
+
+  const post = async (body: any, okMsg: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/affiliate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setData(d);
+      if (d.affiliate) setPct(String(d.affiliate.commission_pct));
+      onOk(okMsg);
+    } catch (e: any) { onError(e.message || "Failed."); }
+    finally { setBusy(false); }
+  };
+
+  if (!aff) {
+    return (
+      <section className="card2">
+        <h2>Affiliates</h2>
+        <p className="sub">
+          Earn <b>up to 80% commission</b> on all fees from people you refer. The free plan is floored at
+          80% minimum payout; upgrade to <b>$1/mo</b> to set your own rate.
+        </p>
+        <button className="btn2" disabled={busy} onClick={() => post({}, "You're an affiliate. 🤘")}>
+          {busy ? "…" : "Become an 80% affiliate"}
+        </button>
+        <p className="sub" style={{ marginTop: 8 }}>Requires a claimed page. <a href="/signup">Claim yours — $1</a>.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>Affiliates</h2>
+        <span className="pill">{aff.plan === "paid" ? "paid · custom rate" : `free · ${aff.commission_pct}% floor`}</span>
+      </div>
+      <ul className="list">
+        <li><span>Your code</span><span className="muted">{aff.code}</span></li>
+        <li><span>Commission</span><span className="muted">{aff.commission_pct}%</span></li>
+      </ul>
+
+      <h3 className="ed-h">Share links</h3>
+      <div className="row"><input className="inp" readOnly value={aff.shareUrl} /><button className="btn2 ghost" onClick={() => copy(aff.shareUrl)}>Copy</button></div>
+      <div className="row"><input className="inp" readOnly value={aff.refUrl} /><button className="btn2 ghost" onClick={() => copy(aff.refUrl)}>Copy</button></div>
+
+      <h3 className="ed-h">Commission rate</h3>
+      {aff.plan === "paid" ? (
+        <div className="row">
+          <input className="inp" type="number" min={1} max={100} value={pct} onChange={(e) => setPct(e.target.value)} />
+          <button className="btn2" disabled={busy} onClick={() => post({ action: "setCommission", commission_pct: Number(pct) }, "Commission updated.")}>Save</button>
+        </div>
+      ) : (
+        <p className="sub">Locked at the {data.floor}% floor on the free plan. <b>Upgrade to $1/mo</b> to lower it. <span className="muted">(recurring billing coming soon)</span></p>
+      )}
+
+      <h3 className="ed-h">Referred users ({data.referrals?.length || 0})</h3>
+      <ul className="list">
+        {(data.referrals || []).map((r: any, i: number) => (
+          <li key={i}><span>{r.domain || r.email}</span><span className="muted">{r.status}</span></li>
+        ))}
+        {(!data.referrals || !data.referrals.length) && <li className="muted">No referrals yet — share your link.</li>}
+      </ul>
     </section>
   );
 }
