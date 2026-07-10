@@ -118,78 +118,161 @@ export default function Dashboard() {
   );
 }
 
+type LinkRow = { label: string; url: string };
 type AccountView = {
   email: string;
   domain: string | null;
-  handles: Record<string, string>;
   payout_wallet: string | null;
   plan: string;
   status: string;
+  config: any;
   pageUrl: string | null;
   payUrl: string | null;
 };
 
+const PLATFORMS: [string, string, string][] = [
+  ["x", "X / Twitter", "@handle"],
+  ["bluesky", "Bluesky", "@you.bsky.social"],
+  ["instagram", "Instagram", "@handle"],
+  ["tiktok", "TikTok", "@handle"],
+  ["github", "GitHub", "username"],
+  ["youtube", "YouTube", "@channel"],
+];
+
+function LinkEditor({ title, rows, setRows }: { title: string; rows: LinkRow[]; setRows: (r: LinkRow[]) => void }) {
+  const set = (i: number, k: keyof LinkRow, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div>
+      <h3 className="ed-h">{title}</h3>
+      {rows.map((r, i) => (
+        <div className="row" key={i}>
+          <input className="inp" style={{ flex: "0 0 34%" }} placeholder="Label" value={r.label} onChange={(e) => set(i, "label", e.target.value)} />
+          <input className="inp" placeholder="https://…" value={r.url} onChange={(e) => set(i, "url", e.target.value)} />
+          <button className="btn2 ghost" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>
+        </div>
+      ))}
+      <button className="btn2 ghost" type="button" onClick={() => setRows([...rows, { label: "", url: "" }])}>+ add</button>
+    </div>
+  );
+}
+
 function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
   const [acct, setAcct] = useState<AccountView | null | undefined>(undefined);
+  const [socials, setSocials] = useState<Record<string, string>>({});
+  const [links, setLinks] = useState<LinkRow[]>([]);
+  const [sponsors, setSponsors] = useState<LinkRow[]>([]);
+  const [hashtags, setHashtags] = useState("");
+  const [stream, setStream] = useState("");
+  const [fgRgba, setFgRgba] = useState("");
+  const [bgRgba, setBgRgba] = useState("");
+  const [text, setText] = useState<Record<string, string>>({ brand: "", headline: "", tagline: "", sub: "" });
   const [wallet, setWallet] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const hydrate = (a: AccountView) => {
+    const c = a.config || {};
+    setSocials(c.socials || {});
+    setLinks(c.customLinks || []);
+    setSponsors(c.sponsors || []);
+    setHashtags((c.hashtags || []).join(", "));
+    setStream(c.stream || "");
+    setFgRgba(c.fgRgba || "");
+    setBgRgba(c.bgRgba || "");
+    setText({ brand: c.brand || "", headline: c.headline || "", tagline: c.tagline || "", sub: c.sub || "" });
+    setWallet(a.payout_wallet || "");
+  };
 
   useEffect(() => {
     fetch("/api/account").then((r) => r.json()).then((d) => {
       setAcct(d.account);
-      if (d.account?.payout_wallet) setWallet(d.account.payout_wallet);
+      if (d.account) hydrate(d.account);
     }).catch(() => setAcct(null));
   }, []);
 
-  // No native account (e.g. a CoinPay-OAuth-only session) — nothing to show.
   if (acct === undefined || acct === null) return null;
 
-  const saveWallet = async () => {
+  const save = async () => {
     setSaving(true);
     try {
       const res = await fetch("/api/account", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ payoutWallet: wallet.trim() }),
+        body: JSON.stringify({
+          payoutWallet: wallet.trim(),
+          config: {
+            socials,
+            customLinks: links.filter((l) => l.url.trim()),
+            sponsors: sponsors.filter((l) => l.url.trim()),
+            hashtags,
+            stream: stream.trim(),
+            fgRgba: fgRgba.trim(),
+            bgRgba: bgRgba.trim(),
+            ...text,
+          },
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setAcct(data.account);
-      onOk("Payout wallet saved.");
+      hydrate(data.account);
+      onOk(acct.status === "active" ? "Saved & published to your page. 🤘" : "Saved.");
     } catch (e: any) { onError(e.message || "Couldn't save."); }
     finally { setSaving(false); }
   };
 
-  const socials = Object.entries(acct.handles || {});
   return (
     <section className="card2">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2>Your page</h2>
+        <h2>Your page — edit</h2>
         <span className="pill">{acct.status === "active" ? `${acct.plan} · live` : "setup pending"}</span>
       </div>
 
       {acct.status === "pending" && (
         <p className="dash-msg err" style={{ marginTop: 0 }}>
-          Your $1 setup isn't complete yet.{" "}
-          {acct.payUrl ? <a href={acct.payUrl}>Finish checkout →</a> : "Retry from the signup page."}
+          Your $1 setup isn't complete — edits save but won't publish until it clears.{" "}
+          {acct.payUrl ? <a href={acct.payUrl}>Finish checkout →</a> : null}
         </p>
       )}
 
       <ul className="list">
         <li><span>Domain</span><span className="muted">{acct.domain || "—"}</span></li>
-        <li>
-          <span>Public page</span>
-          <span className="muted">
-            {acct.pageUrl ? <a href={acct.pageUrl} target="_blank" rel="noopener noreferrer">{acct.pageUrl} ↗</a> : "—"}
-          </span>
-        </li>
-        <li><span>Socials</span><span className="muted">{socials.length ? socials.map(([k, v]) => `${k}:${v}`).join("  ") : "none"}</span></li>
+        <li><span>Public page</span><span className="muted">{acct.pageUrl ? <a href={acct.pageUrl} target="_blank" rel="noopener noreferrer">{acct.pageUrl} ↗</a> : "—"}</span></li>
       </ul>
 
-      <h2 style={{ marginTop: 16 }}>CoinPay payout wallet</h2>
-      <p className="sub">Where your earnings/commissions get paid.</p>
+      <h3 className="ed-h">Copy <span className="muted">(optional — defaults are auto-generated)</span></h3>
+      <div className="row"><input className="inp" placeholder="Brand name" value={text.brand} onChange={(e) => setText({ ...text, brand: e.target.value })} /></div>
+      <div className="row"><input className="inp" placeholder="Headline (e.g. IS COMING)" value={text.headline} onChange={(e) => setText({ ...text, headline: e.target.value })} /></div>
+      <div className="row"><input className="inp" placeholder="Tagline" value={text.tagline} onChange={(e) => setText({ ...text, tagline: e.target.value })} /></div>
+      <div className="row"><input className="inp" placeholder="Sub-text" value={text.sub} onChange={(e) => setText({ ...text, sub: e.target.value })} /></div>
+
+      <h3 className="ed-h">Socials</h3>
+      {PLATFORMS.map(([k, label, ph]) => (
+        <div className="row" key={k}>
+          <span className="muted" style={{ width: 92, flex: "0 0 92px" }}>{label}</span>
+          <input className="inp" placeholder={ph} value={socials[k] || ""} onChange={(e) => setSocials({ ...socials, [k]: e.target.value })} />
+        </div>
+      ))}
+
+      <LinkEditor title="Links" rows={links} setRows={setLinks} />
+      <LinkEditor title="Sponsors" rows={sponsors} setRows={setSponsors} />
+
+      <h3 className="ed-h">Hashtags <span className="muted">(comma-separated keywords)</span></h3>
+      <div className="row"><input className="inp" placeholder="moshcoding, launch" value={hashtags} onChange={(e) => setHashtags(e.target.value)} /></div>
+
+      <h3 className="ed-h">Stream URL</h3>
+      <div className="row"><input className="inp" placeholder="https://open.spotify.com/playlist/…" value={stream} onChange={(e) => setStream(e.target.value)} /></div>
+
+      <h3 className="ed-h">Accent colors <span className="muted">(rgba() or bare 255,0,80,1)</span></h3>
       <div className="row">
-        <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
-        <button className="btn2" disabled={saving} onClick={saveWallet}>{saving ? "…" : "Save wallet"}</button>
+        <input className="inp" placeholder="foreground (fg_rgba)" value={fgRgba} onChange={(e) => setFgRgba(e.target.value)} />
+        <input className="inp" placeholder="background (bg_rgba)" value={bgRgba} onChange={(e) => setBgRgba(e.target.value)} />
+      </div>
+
+      <h3 className="ed-h">CoinPay payout wallet</h3>
+      <div className="row"><input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} /></div>
+
+      <div className="row" style={{ marginTop: 16 }}>
+        <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save & publish"}</button>
+        {acct.pageUrl && <a className="btn2 ghost" href={acct.pageUrl} target="_blank" rel="noopener noreferrer">Preview ↗</a>}
       </div>
     </section>
   );

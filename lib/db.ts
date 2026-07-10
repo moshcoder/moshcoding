@@ -184,11 +184,14 @@ async function initSchema(): Promise<void> {
       reset_token   TEXT,
       reset_expires TEXT,
       ref           TEXT,
+      config        TEXT NOT NULL DEFAULT '{}',
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_accounts_payment ON accounts (coinpay_payment_id)`);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_accounts_reset ON accounts (reset_token)`);
+  // config added via ALTER for accounts tables created before it existed.
+  await addColumnIfMissing("accounts", "config", "TEXT NOT NULL DEFAULT '{}'");
 
   // Read-model for tenant `?dn=` pages so a provisioned page renders from the DB
   // (on-disk configs/*.json don't persist on Railway). `config` is the same
@@ -311,11 +314,15 @@ export type Account = {
   status: "pending" | "active";
   coinpay_payment_id: string | null;
   paid_at: string | null;
+  /** Full editable tenant config (socials, customLinks, sponsors, hashtags, stream, accents, text). */
+  config: Record<string, any>;
 };
 
 function rowToAccount(r: any): Account {
   let handles: Record<string, string> = {};
   try { handles = r.handles ? JSON.parse(String(r.handles)) : {}; } catch { handles = {}; }
+  let config: Record<string, any> = {};
+  try { config = r.config ? JSON.parse(String(r.config)) : {}; } catch { config = {}; }
   return {
     id: String(r.id),
     email: String(r.email),
@@ -327,6 +334,7 @@ function rowToAccount(r: any): Account {
     status: (r.status === "active" ? "active" : "pending"),
     coinpay_payment_id: r.coinpay_payment_id ? String(r.coinpay_payment_id) : null,
     paid_at: r.paid_at ? String(r.paid_at) : null,
+    config,
   };
 }
 
@@ -343,14 +351,16 @@ export async function createAccount(opts: {
 }): Promise<Account> {
   await ensureSchema();
   const email = opts.email.trim().toLowerCase();
+  const seedConfig = Object.keys(opts.handles || {}).length ? { socials: opts.handles } : {};
   const res = await db().execute({
-    sql: `INSERT INTO accounts (email, password_hash, password_salt, domain, handles, payout_wallet, payout_chain, ref)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO accounts (email, password_hash, password_salt, domain, handles, payout_wallet, payout_chain, ref, config)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           RETURNING *`,
     args: [
       email, opts.passwordHash, opts.passwordSalt,
       opts.domain || null, JSON.stringify(opts.handles || {}),
       opts.payoutWallet || null, opts.payoutChain || null, opts.ref || null,
+      JSON.stringify(seedConfig),
     ],
   });
   return rowToAccount(res.rows[0]);
@@ -445,6 +455,16 @@ export async function updateAccountProfile(id: string, opts: {
       opts.handles ? JSON.stringify(opts.handles) : null,
       id,
     ],
+  });
+  return res.rows[0] ? rowToAccount(res.rows[0]) : null;
+}
+
+/** Replaces the account's editable tenant config blob. Returns the updated account. */
+export async function updateAccountConfig(id: string, config: Record<string, any>): Promise<Account | null> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `UPDATE accounts SET config = ? WHERE id = ? RETURNING *`,
+    args: [JSON.stringify(config || {}), id],
   });
   return res.rows[0] ? rowToAccount(res.rows[0]) : null;
 }

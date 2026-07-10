@@ -87,6 +87,11 @@ export function normalizeHandle(v: unknown): string | null {
   return handle(v);
 }
 
+/** Public wrapper around the internal URL normalizer (bare domains get https://). */
+export function normalizeUrl(v: unknown): string | null {
+  return fallbackUrl(v);
+}
+
 /** Normalizes a fallback target to an absolute URL (bare domains get https://). */
 function fallbackUrl(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -296,26 +301,35 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   }
 
   const slug = dn.split(".")[0].replace(/[^a-z0-9]/g, "");
-  // Socials/website first, then any custom ?link_N= links (our apps etc.).
-  const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams)];
-  // Hashtags: explicit ?hashtags= keywords, else a single domain-slug hashtag
-  // (same slug the socials derive from). Special chars already stripped.
+  const ov = override; // includes the merged DB tenant config (see tenantOverride above)
+  const cleanLinks = (arr: any, kind: string): TenantLink[] =>
+    Array.isArray(arr)
+      ? arr.filter((l) => l && l.url && l.label).map((l) => ({ label: String(l.label).slice(0, 60), url: String(l.url), kind }))
+      : [];
+
+  // Socials/website first, then ?link_N= query links, then saved custom links.
+  const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams), ...cleanLinks(ov.customLinks, "link")];
+  // Sponsors: ?aff_linkN= query + saved sponsors.
+  const sponsors = [...parseSponsors(opts.affParams), ...cleanLinks(ov.sponsors, "sponsor")];
+  // Hashtags: ?hashtags= query, else saved config, else the domain slug.
   const parsedTags = parseHashtags(opts.hashtags);
-  const hashtags = parsedTags.length ? parsedTags : (slug ? [slug] : []);
+  const savedTags = Array.isArray(ov.hashtags)
+    ? ov.hashtags.map((h: any) => String(h).replace(/[^a-z0-9]/gi, "").toLowerCase()).filter(Boolean).slice(0, 8)
+    : [];
+  const hashtags = parsedTags.length ? parsedTags : (savedTags.length ? savedTags : (slug ? [slug] : []));
+
   return {
     ...base,
     ...override,
     dn,
     hashtag: override.hashtag || (sh ? `#${sh}` : `#${slug}`),
     links,
-    sponsors: parseSponsors(opts.affParams),
+    sponsors,
     hashtags,
     styles: parseStyles(opts.style),
-    // Accent always falls back to the default moshcoding green; a tenant only
-    // overrides it with an explicit rgba() via ?fg_rgba= (config hex accents are
-    // intentionally ignored so pages don't drift off-brand). ?bg_rgba= tints bg.
-    accent: coerceRgba(opts.fgRgba) || DEFAULT_ACCENT,
-    bgAccent: coerceRgba(opts.bgRgba),
-    stream: fallbackUrl(opts.stream),
+    // query wins, then saved config, then the default moshcoding green.
+    accent: coerceRgba(opts.fgRgba) || coerceRgba(ov.fgRgba) || DEFAULT_ACCENT,
+    bgAccent: coerceRgba(opts.bgRgba) || coerceRgba(ov.bgRgba),
+    stream: fallbackUrl(opts.stream) || fallbackUrl(ov.stream),
   };
 }

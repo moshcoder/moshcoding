@@ -300,6 +300,10 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .qhelp-ex-list a:hover { text-decoration: underline; }
 @media (max-width: 520px) { .qhelp-row { grid-template-columns: 1fr; gap: 3px; } }
 
+/* Dashboard editor section headings */
+.ed-h { margin: 18px 0 8px; font-size: 13px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; color: #cfcfcf; }
+.ed-h .muted { text-transform: none; letter-spacing: 0; }
+
 /* Signup affiliate banner */
 .earn-banner { margin: 4px 0 18px; padding: 12px 16px; border: 1px solid var(--acid-dim, #6fae12); border-radius: 10px; background: rgba(158,240,26,.08); color: #e7e7e7; font-size: 14px; text-align: center; }
 
