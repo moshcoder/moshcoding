@@ -77,7 +77,30 @@ function sanitizeConfig(body: any): Record<string, any> {
   const repo = normalizeRepo(body?.repo);
   if (repo) c.repo = repo;
   if (typeof body?.assetPattern === "string" && body.assetPattern.trim()) c.assetPattern = body.assetPattern.trim().slice(0, 120);
+
+  // Content blocks (markdown). Raw markdown is stored; it's rendered safely
+  // (escape-first) at display time, so no HTML sanitization is needed here.
+  const blocks = cleanBlocks(body?.blocks);
+  if (blocks.length) c.blocks = blocks;
   return c;
+}
+
+/** Sanitizes the content-blocks array: bounded count + size, known types only. */
+function cleanBlocks(arr: unknown): { id: string; type: string; content: string; enabled: boolean }[] {
+  if (!Array.isArray(arr)) return [];
+  const out: { id: string; type: string; content: string; enabled: boolean }[] = [];
+  for (const b of arr.slice(0, 50)) {
+    const content = typeof (b as any)?.content === "string" ? (b as any).content.slice(0, 10000) : "";
+    if (!content.trim()) continue;
+    const rawId = String((b as any)?.id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+    out.push({
+      id: rawId || `b_${out.length}_${content.length}`,
+      type: "markdown",
+      content,
+      enabled: (b as any)?.enabled !== false,
+    });
+  }
+  return out;
 }
 
 function view(acct: any) {
@@ -129,7 +152,7 @@ export async function POST(req: NextRequest) {
   const src = body?.config ? body.config : body;
   if (body?.config || src?.socials || src?.customLinks || src?.sponsors || src?.hashtags ||
       src?.stream !== undefined || src?.fgRgba !== undefined || src?.bgRgba !== undefined ||
-      src?.repo !== undefined || TEXT_FIELDS.some((k) => src?.[k] !== undefined)) {
+      src?.repo !== undefined || src?.blocks !== undefined || TEXT_FIELDS.some((k) => src?.[k] !== undefined)) {
     const config = sanitizeConfig(src);
     // Pull image assets from the connected repo (best-effort; don't wipe the
     // existing gallery on a transient GitHub error).

@@ -3,6 +3,7 @@ import WaitlistForm from "./WaitlistForm";
 import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
 import CrawlProofAd from "./CrawlProofAd";
+import { renderMarkdown } from "@/lib/markdown";
 
 export default function Tenant({ cfg }: { cfg: TenantConfig }) {
   const accentStyle = {
@@ -39,6 +40,14 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         ) : cfg.hashtag ? <p className="t-hashtag">{cfg.hashtag}</p> : null}
 
         {cfg.codeBlock ? <pre className="t-code">{cfg.codeBlock}</pre> : null}
+
+        {cfg.blocks.length > 0 && (
+          <div className="t-blocks">
+            {cfg.blocks.map((b) => (
+              <div key={b.id} className="t-block" dangerouslySetInnerHTML={{ __html: renderMarkdown(b.content) }} />
+            ))}
+          </div>
+        )}
 
         <SharePost cfg={cfg} />
         {cfg.links.length > 0 && (

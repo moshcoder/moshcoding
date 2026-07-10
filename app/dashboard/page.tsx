@@ -138,6 +138,48 @@ export default function Dashboard() {
 }
 
 type LinkRow = { label: string; url: string };
+type BlockRow = { id: string; type: string; content: string; enabled: boolean };
+
+const newId = () =>
+  (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `b_${Math.floor(Math.random() * 1e9).toString(36)}`;
+
+function BlocksEditor({ rows, setRows }: { rows: BlockRow[]; setRows: (r: BlockRow[]) => void }) {
+  const set = (i: number, patch: Partial<BlockRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= rows.length) return;
+    const copy = [...rows];
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+    setRows(copy);
+  };
+  return (
+    <div>
+      <h3 className="ed-h">Content blocks <span className="muted">(markdown — headings, **bold**, `code`, ```fences```, lists, links)</span></h3>
+      {rows.map((r, i) => (
+        <div className={`block-ed${r.enabled ? "" : " paused"}`} key={r.id}>
+          <div className="block-bar">
+            <span className="muted">Block {i + 1}{r.enabled ? "" : " · paused"}</span>
+            <span className="block-actions">
+              <button className="btn2 ghost" type="button" title="Move up" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
+              <button className="btn2 ghost" type="button" title="Move down" onClick={() => move(i, 1)} disabled={i === rows.length - 1}>↓</button>
+              <button className="btn2 ghost" type="button" onClick={() => set(i, { enabled: !r.enabled })}>{r.enabled ? "Pause" : "Resume"}</button>
+              <button className="btn2 ghost" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Delete</button>
+            </span>
+          </div>
+          <textarea
+            className="block-ta" rows={5} placeholder={"## Heading\n\nSome **markdown** with a `code` snippet:\n\n```\nnpm i thing\n```"}
+            value={r.content} onChange={(e) => set(i, { content: e.target.value })}
+          />
+        </div>
+      ))}
+      <button className="btn2 ghost" type="button" onClick={() => setRows([...rows, { id: newId(), type: "markdown", content: "", enabled: true }])}>
+        + Add a block
+      </button>
+    </div>
+  );
+}
 type AccountView = {
   email: string;
   domain: string | null;
@@ -190,6 +232,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [repo, setRepo] = useState("");
   const [assetPattern, setAssetPattern] = useState("");
   const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
+  const [blocks, setBlocks] = useState<BlockRow[]>([]);
   const [saving, setSaving] = useState(false);
 
   const hydrate = (a: AccountView) => {
@@ -198,6 +241,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     setRepo(c.repo || "");
     setAssetPattern(c.assetPattern || "");
     setAssets(c.assets || []);
+    setBlocks(Array.isArray(c.blocks) ? c.blocks : []);
     setSocials(c.socials || {});
     setLinks(c.customLinks || []);
     setSponsors(c.sponsors || []);
@@ -236,6 +280,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
             bgRgba: bgRgba.trim(),
             repo: repo.trim(),
             assetPattern: assetPattern.trim(),
+            blocks: blocks.map((b) => ({ ...b, content: b.content })),
             ...text,
           },
         }),
@@ -275,6 +320,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       <div className="row"><input className="inp" placeholder="Headline (e.g. IS COMING)" value={text.headline} onChange={(e) => setText({ ...text, headline: e.target.value })} /></div>
       <div className="row"><input className="inp" placeholder="Tagline" value={text.tagline} onChange={(e) => setText({ ...text, tagline: e.target.value })} /></div>
       <div className="row"><input className="inp" placeholder="Sub-text" value={text.sub} onChange={(e) => setText({ ...text, sub: e.target.value })} /></div>
+
+      <BlocksEditor rows={blocks} setRows={setBlocks} />
 
       <h3 className="ed-h">Socials</h3>
       {PLATFORMS.map(([k, label, ph]) => (

@@ -32,7 +32,23 @@ export type TenantConfig = {
   adSlot: string | null;
   /** CrawlProof ad format token, e.g. "banner_300x250". */
   adFormat: string;
+  /** Owner-authored markdown content blocks, rendered (safely) on the page. */
+  blocks: ContentBlock[];
 };
+
+export type ContentBlock = { id: string; type: string; content: string; enabled: boolean };
+
+/** Reads/validates saved content blocks (only enabled ones with content). */
+export function cleanBlocks(v: unknown): ContentBlock[] {
+  if (!Array.isArray(v)) return [];
+  const out: ContentBlock[] = [];
+  for (const b of v.slice(0, 50)) {
+    const content = typeof (b as any)?.content === "string" ? (b as any).content : "";
+    if (!content.trim() || (b as any)?.enabled === false) continue;
+    out.push({ id: String((b as any)?.id || out.length), type: "markdown", content, enabled: true });
+  }
+  return out;
+}
 
 /** Default moshcoding accent (poison lime). Used unless an rgba override is given. */
 export const DEFAULT_ACCENT = "#9EF01A";
@@ -411,5 +427,7 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
       const ad = q !== undefined ? q : saved !== undefined ? saved : { slot: DEFAULT_AD_SLOT, format: DEFAULT_AD_FORMAT };
       return { adSlot: ad ? ad.slot : null, adFormat: ad ? ad.format : DEFAULT_AD_FORMAT };
     })(),
+    // Owner-authored markdown blocks come only from the saved tenant config.
+    blocks: cleanBlocks(ov.blocks),
   };
 }
