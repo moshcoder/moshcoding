@@ -9,12 +9,14 @@ function frameAncestors(req: NextRequest): string {
   const allow = ["'self'", ...parked];
 
   // Auto-allow the parked domain currently being rendered. A masked-forwarded
-  // domain frames moshcoding.com/?dn=<self>, so the frame request carries its
-  // own ?dn; trust it to iframe just its own tenant page. This means new parked
-  // domains work without hand-editing FRAME_ANCESTORS for each one.
-  const dn = (req.nextUrl.searchParams.get("dn") || "").trim().toLowerCase();
-  if (dn.length <= 253 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(dn)) {
-    allow.push(`https://${dn}`, `https://www.${dn}`);
+  // domain frames moshcoding.com/?dn=<self> (tenant page) or ?bid=<self> (its bid
+  // page), so the frame request carries its own domain; trust it to iframe just
+  // its own pages. New parked domains work without hand-editing FRAME_ANCESTORS.
+  const isDomain = (d: string) =>
+    d.length <= 253 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(d);
+  for (const key of ["dn", "bid"]) {
+    const d = (req.nextUrl.searchParams.get(key) || "").trim().toLowerCase();
+    if (isDomain(d)) allow.push(`https://${d}`, `https://www.${d}`);
   }
   return allow.join(" ");
 }

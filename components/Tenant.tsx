@@ -114,7 +114,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
 
         <AffiliateJoin dn={cfg.dn} />
 
-        <a className="t-bid" href={`/?bid=${encodeURIComponent(cfg.dn)}`}>💰 Bid on this domain</a>
+        <a className="t-bid" href={`https://${cfg.dn}/?bid=${encodeURIComponent(cfg.dn)}`} target="_top" rel="noopener">💰 Bid on this domain</a>
 
         {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
