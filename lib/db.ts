@@ -41,6 +41,119 @@ async function initSchema(): Promise<void> {
       last_login TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // ---- orgs -> teams -> projects (+ members) -----------------------------
+  // Users are referenced by their OIDC `sub` (our users PK). No RLS —
+  // authorization is enforced in app code (see lib/authz.ts).
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS orgs (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      owner_sub  TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS teams (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      org_id     TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_teams_org ON teams (org_id)`);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS team_members (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      team_id    TEXT NOT NULL,
+      user_sub   TEXT NOT NULL,
+      role       TEXT NOT NULL DEFAULT 'viewer'
+                 CHECK (role IN ('owner','admin','member','viewer')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (team_id, user_sub)
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members (user_sub, team_id)`);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      team_id    TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_projects_team ON projects (team_id)`);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS team_invitations (
+      id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      team_id     TEXT NOT NULL,
+      email       TEXT NOT NULL,
+      role        TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin','member','viewer')),
+      token       TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(32)))),
+      invited_by  TEXT NOT NULL,
+      expires_at  TEXT NOT NULL DEFAULT (datetime('now','+7 days')),
+      accepted_at TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (team_id, email)
+    )
+  `);
+
+  // ---- webhooks: outbound endpoints + delivery queue ---------------------
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS webhook_endpoints (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      project_id TEXT NOT NULL,
+      url        TEXT NOT NULL,
+      secret     TEXT NOT NULL,
+      events     TEXT NOT NULL DEFAULT '["*"]',
+      active     INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_webhook_endpoints_project ON webhook_endpoints (project_id)`);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      endpoint_id     TEXT NOT NULL,
+      event_type      TEXT NOT NULL,
+      payload         TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','delivering','delivered','failed','dead_letter')),
+      attempts        INTEGER NOT NULL DEFAULT 0,
+      response_status INTEGER,
+      last_error      TEXT,
+      next_attempt_at TEXT,
+      delivered_at    TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (endpoint_id, idempotency_key)
+    )
+  `);
+
+  // ---- webhooks: inbound config + idempotency ledger ---------------------
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS inbound_webhooks (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      project_id TEXT NOT NULL,
+      provider   TEXT NOT NULL,
+      secret     TEXT NOT NULL,
+      active     INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (project_id, provider)
+    )
+  `);
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS inbound_events (
+      id              TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      inbound_id      TEXT NOT NULL,
+      provider        TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'accepted'
+                      CHECK (status IN ('accepted','duplicate','rejected','failed')),
+      received_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (provider, idempotency_key)
+    )
+  `);
 }
 
 export async function addSignup(opts: { email: string; dn?: string | null; ua?: string | null }) {

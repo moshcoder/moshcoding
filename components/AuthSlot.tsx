@@ -15,6 +15,7 @@ export default function AuthSlot() {
   if (me.user) {
     return (
       <span className="auth-slot">
+        <a className="auth-btn" href="/dashboard">Dashboard</a>
         <span className="who" title={me.user.email ?? ""}>{me.user.email || me.user.name || "signed in"}</span>
         <button
           className="auth-btn"
