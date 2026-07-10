@@ -36,7 +36,10 @@ export function middleware(req: NextRequest) {
   // Referral attribution: a ?ref=<code> visit drops a 90-day cookie (first-touch
   // — the first ref a visitor arrives with sticks). Signup/waitlist read it so
   // the referral is credited whenever they convert within the window.
-  const rawRef = req.nextUrl.searchParams.get("ref");
+  // Normally ?ref=<code> is its own param. But Porkbun param-forwarding can glue
+  // it onto the ?dn= value ("dn=moshscript.com?ref=abc"), so recover it there too.
+  const sp = req.nextUrl.searchParams;
+  const rawRef = sp.get("ref") ?? sp.get("dn")?.match(/[?&]ref=([A-Za-z0-9_-]+)/)?.[1] ?? null;
   if (rawRef && !req.cookies.get("mc_ref")?.value) {
     const ref = rawRef.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
     if (ref) {

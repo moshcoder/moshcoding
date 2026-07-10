@@ -124,7 +124,14 @@ export function coerceRgba(v: unknown): string | null {
 
 export function safeDomain(dn: unknown): string | null {
   if (typeof dn !== "string") return null;
-  const d = dn.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  // Strip a path/query/hash too: Porkbun param-forwarding can append the
+  // visitor's query onto our ?dn=<domain> target (e.g. "moshscript.com?ref=abc"),
+  // and we still want the bare domain to resolve the tenant.
+  const d = dn
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/[/?#&].*$/, "");
   if (!/^[a-z0-9.-]{3,253}$/.test(d) || !d.includes(".") || d.includes("..")) return null;
   return d;
 }
