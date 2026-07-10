@@ -164,6 +164,15 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .waitlist { text-align: center; }
 .waitlist .lede { margin-inline: auto; }
 
+.define { max-width: 460px; margin: 0 auto 22px; padding: 16px 18px; text-align: left;
+  background: var(--panel, #101210); border: 1px solid var(--line); border-left: 3px solid var(--acid); border-radius: 8px; }
+.define dt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.define-word { font-size: 20px; font-weight: 700; color: var(--bone, #eee); }
+.define-word::before { content: "“"; color: var(--acid); }
+.define-word::after { content: "”"; color: var(--acid); }
+.define-meta { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ash); }
+.define dd { margin: 0; font-size: 15px; line-height: 1.6; color: var(--bone, #ddd); }
+
 .listen { text-align: center; }
 .fb-embed { display: flex; justify-content: center; }
 .fb-embed iframe { width: 500px; max-width: 100%; border: 1px solid var(--line); background: #0b0d0a; }

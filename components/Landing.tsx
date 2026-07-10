@@ -77,6 +77,18 @@ export default function Landing() {
 
       <section id="waitlist" className="waitlist">
         <h2>Get in the pit</h2>
+
+        <dl className="define" aria-label="Definition of mosh pit">
+          <dt>
+            <span className="define-word">mosh pit</span>
+            <span className="define-meta">in British English · <em>noun</em> · informal</span>
+          </dt>
+          <dd>
+            an area at a rock-music concert, usually in front of the stage, where members of the
+            audience dance in a frantic and violent manner
+          </dd>
+        </dl>
+
         <p className="lede">Drop your email. We&apos;ll hit you when the playlist and the merch drop.</p>
         <WaitlistForm />
       </section>
