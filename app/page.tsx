@@ -63,7 +63,8 @@ export default async function Page({
       cfg={configFor(dn, {
         socials: sp.socials, fallback: sp.fallback, social, style: sp.style, linkParams, affParams,
         hashtags: sp.hashtags, fgRgba: sp.fg_rgba ?? sp.rgba, bgRgba: sp.bg_rgba, stream: sp.stream,
-        brand: sp.brand, headline: sp.headline, tagline: sp.tagline, sub: sp.sub, tenantOverride,
+        brand: sp.brand, headline: sp.headline, tagline: sp.tagline, sub: sp.sub,
+        codeBlock: sp.code_block, tenantOverride,
       })}
     />
   );

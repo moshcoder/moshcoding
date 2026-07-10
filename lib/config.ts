@@ -26,10 +26,21 @@ export type TenantConfig = {
   bgAccent: string | null;
   /** Optional ?stream= playlist/stream URL — rendered as a prominent ▶ Stream CTA. */
   stream: string | null;
+  /** Optional ?code_block= snippet rendered in a monospace block (React-escaped). */
+  codeBlock: string | null;
 };
 
 /** Default moshcoding accent (poison lime). Used unless an rgba override is given. */
 export const DEFAULT_ACCENT = "#9EF01A";
+
+/** A ?code_block= snippet: bounded plain text (rendered escaped in a <pre>). */
+export function cleanCode(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  // Keep printable text + tabs/newlines; drop other control chars. React escapes
+  // the rest, so this is only about size + stray control bytes.
+  const s = v.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, "").slice(0, 2000);
+  return s.trim() ? s : null;
+}
 
 /** Accepts only an rgb()/rgba() color string; returns it trimmed, or null. */
 export function validRgba(v: unknown): string | null {
@@ -190,6 +201,8 @@ export type TenantOverrides = {
   bgRgba?: string | null;
   /** ?stream= playlist/stream URL (Spotify/YouTube/SoundCloud/…). */
   stream?: string | null;
+  /** ?code_block= raw snippet text (rendered escaped in a <pre>). */
+  codeBlock?: string | null;
   /** ?brand= / ?headline= / ?tagline= / ?sub= copy overrides. */
   brand?: string | null;
   headline?: string | null;
@@ -352,5 +365,6 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     accent: coerceRgba(opts.fgRgba) || coerceRgba(ov.fgRgba) || DEFAULT_ACCENT,
     bgAccent: coerceRgba(opts.bgRgba) || coerceRgba(ov.bgRgba),
     stream: fallbackUrl(opts.stream) || fallbackUrl(ov.stream),
+    codeBlock: cleanCode(opts.codeBlock) || cleanCode(ov.codeBlock),
   };
 }

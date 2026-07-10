@@ -13,6 +13,7 @@ const PARAMS: { p: string; d: string; ex?: string }[] = [
   { p: "fg_rgba=<rgba>", d: "Foreground accent. Full rgba() or bare numbers. Defaults to moshcoding green.", ex: "?dn=x.io&fg_rgba=255,0,80,1" },
   { p: "bg_rgba=<rgba>", d: "Background tint. Full rgba() or bare numbers.", ex: "?dn=x.io&bg_rgba=rgba(0,0,0,.6)" },
   { p: "stream=<url>", d: "Adds a ▶ Stream button linking to a playlist/stream.", ex: "?dn=x.io&stream=https://open.spotify.com/playlist/..." },
+  { p: "code_block=<snippet>", d: "Renders a monospace code block (URL-encode newlines as %0A). Great for a signature loop.", ex: "?dn=x.io&code_block=while(alive){…}" },
   { p: "ref=<code>", d: "Referral code — attributes any waitlist signup on the page to you.", ex: "?dn=x.io&ref=YOURCODE" },
 ];
 
@@ -22,6 +23,7 @@ const EXAMPLES: { label: string; href: string }[] = [
   { label: "Per-platform socials + hashtags", href: "/?dn=killer-startup.io&social_x=killerstartup&social_bluesky=killer.bsky.social&hashtags=moshcoding,launch" },
   { label: "Custom red accent + dark tint", href: "/?dn=my-band.io&style=deathcore&fg_rgba=255,0,80,1&bg_rgba=0,0,0,.55" },
   { label: "Stream + sponsor + ref", href: "/?dn=x.io&stream=https://open.spotify.com/playlist/37i9dQZF1DX&aff_link1=Sponsor|https://sponsor.com&ref=YOURCODE" },
+  { label: "moshscript code block", href: "/?dn=moshcode.sh&code_block=" + encodeURIComponent("while (alive) {\n  code();\n  mosh();\n  notify();\n  repeat();\n} // no bugs, only features") },
 ];
 
 export default function QueryHelp() {

@@ -37,6 +37,8 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           <p className="t-hashtag">{cfg.hashtags.map((h) => `#${h}`).join(" ")}</p>
         ) : cfg.hashtag ? <p className="t-hashtag">{cfg.hashtag}</p> : null}
 
+        {cfg.codeBlock ? <pre className="t-code">{cfg.codeBlock}</pre> : null}
+
         <SharePost cfg={cfg} />
         {cfg.links.length > 0 && (
           <nav className="links" aria-label="Social links">
