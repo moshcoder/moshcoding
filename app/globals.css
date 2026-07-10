@@ -170,6 +170,12 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .t-domain { font-family: var(--mono); font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--tenant-accent, var(--acid)); margin: 0 0 10px; }
 .t-headline { font-family: var(--display); font-weight: 400; text-transform: uppercase; font-size: clamp(44px, 11vw, 104px); line-height: 0.95; margin: 0 0 18px; text-wrap: balance; }
 .t-headline em { color: var(--tenant-accent, var(--acid)); font-style: normal; text-shadow: 0 0 34px rgba(158,240,26,0.4); }
+.t-hero {
+  width: min(320px, 78vw); height: auto; aspect-ratio: 1; object-fit: cover;
+  margin: 6px auto 26px; display: block; border: 1px solid var(--line);
+  box-shadow: 0 0 60px rgba(158, 240, 26, 0.22);
+  background: #0b0d0a;
+}
 .t-tag { font-size: clamp(20px, 3vw, 28px); color: var(--bone); margin: 0 0 8px; }
 .t-sub { color: var(--ash); margin: 0 0 30px; }
 .wform.big input[type=email] { flex-basis: 300px; padding: 17px 18px; font-size: 17px; }

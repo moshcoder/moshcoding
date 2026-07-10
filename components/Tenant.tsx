@@ -8,6 +8,16 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
     <div className="tenant" style={accentStyle}>
       <div className="tenant-wrap">
         <a className="powered" href="https://moshcoding.com" rel="noopener noreferrer">⚡ powered by <b>#moshcoding</b></a>
+        {cfg.styles.length > 0 && (
+          <img
+            className="t-hero"
+            src={`/api/og-image?dn=${encodeURIComponent(cfg.dn)}&style=${encodeURIComponent(cfg.styles.join(","))}`}
+            alt={`${cfg.brand} — ${cfg.styles.join(", ")}`}
+            width={320}
+            height={320}
+            loading="eager"
+          />
+        )}
         <p className="t-domain">{cfg.dn}</p>
         <h1 className="t-headline">{cfg.brand} <em>{cfg.headline}</em></h1>
         <p className="t-tag">{cfg.tagline}</p>
