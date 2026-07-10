@@ -27,6 +27,7 @@ export default function Landing() {
             <span className="c-kw">while</span>{" (alive) {\n  "}
             <span className="c-fn">code</span>{"();\n  "}
             <span className="c-fn">mosh</span>{"();\n  "}
+            <span className="c-fn">notify</span>{"();\n  "}
             <span className="c-fn">repeat</span>{"();\n}"}
             <span className="c-cm"> // no bugs, only features</span>
           </pre>
