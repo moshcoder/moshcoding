@@ -17,7 +17,9 @@ const PATHS: Record<string, React.ReactNode> = {
     <path d="M8 8.5A13 13 0 0112 8a13 13 0 014 .5M8 15.5A13 13 0 0012 16a13 13 0 004-.5M6 7l1-1s2-1 5-1 5 1 5 1l1 1c1.5 2 2 5 1.8 8-1.2 1.3-3 2-3 2l-1-1.5M6 7C4.5 9 4 12 4.2 15c1.2 1.3 3 2 3 2l1-1.5" fill="none" />
     <circle cx="9.5" cy="12.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="14.5" cy="12.5" r="1.1" fill="currentColor" stroke="none" />
   </>),
+  bluesky: <path d="M12 10.8C10.9 8.6 8 5.7 5.4 4.6 3.6 3.8 2 4.3 2 6.6c0 1.9 1.1 5 1.8 5.9.9 1.1 2.6 1.3 4.2 1-1.9.3-3.6 1-2.1 3.2.8 1.2 2.7 1.6 3.5-.3.3-.7.5-1.4.6-1.7.1.3.3 1 .6 1.7.8 1.9 2.7 1.5 3.5.3 1.5-2.2-.2-2.9-2.1-3.2 1.6.3 3.3.1 4.2-1 .7-.9 1.8-4 1.8-5.9 0-2.3-1.6-2.8-3.4-2C16 5.7 13.1 8.6 12 10.8z" fill="currentColor" stroke="none" />,
   link: <path d="M9 15l6-6M10 6l1-1a4 4 0 015.7 5.7l-1 1M14 18l-1 1A4 4 0 017.3 13.3l1-1" fill="none" />,
+  sponsor: <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z" fill="currentColor" stroke="none" />,
 };
 
 export function kindFromUrl(url: string): string {

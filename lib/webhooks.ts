@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { db } from "./db";
+import { db, activeDomainWebhooks } from "./db";
 
 const TOLERANCE = 300; // seconds
 
@@ -45,6 +45,34 @@ export function isInternalUrl(raw: string): boolean {
     if (a === 169 && b === 254) return true;
   }
   return false;
+}
+
+/* ---- per-domain outbound delivery (best-effort, no owner server needed) ---- */
+/**
+ * Fires a parked-domain event to every active target URL for that domain,
+ * Standard-Webhooks-signed with each target's secret. Best-effort and
+ * SSRF-guarded; never throws (so it can't break the triggering request).
+ */
+export async function fireDomainEvent(dn: string, type: string, data: unknown): Promise<void> {
+  let targets: { url: string; secret: string }[] = [];
+  try { targets = await activeDomainWebhooks(dn); } catch { return; }
+  if (!targets.length) return;
+  const id = "evt_" + crypto.randomBytes(12).toString("hex");
+  const ts = Math.floor(Date.now() / 1000);
+  const body = JSON.stringify({ id, type, dn, data, created_at: new Date().toISOString() });
+  await Promise.allSettled(
+    targets.map(async (t) => {
+      if (isInternalUrl(t.url)) return;
+      try {
+        await fetch(t.url, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...signWebhook(id, ts, body, t.secret) },
+          body,
+          signal: AbortSignal.timeout(10_000),
+        });
+      } catch { /* best-effort */ }
+    }),
+  );
 }
 
 /* ---- outbound delivery ---- */

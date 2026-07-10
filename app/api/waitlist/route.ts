@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addSignup, verifySignup } from "@/lib/db";
-import { safeDomain } from "@/lib/config";
+import { addSignup, verifySignup, getTenantConfig } from "@/lib/db";
+import { safeDomain, configFor } from "@/lib/config";
 import { isEmailConfigured, sendWaitlistVerification } from "@/lib/email";
+import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Referral code from ?ref=<code>: keep it URL-safe and bounded, or drop it. */
+function cleanRef(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const safe = s.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  return safe || null;
+}
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -18,9 +27,15 @@ export async function POST(req: NextRequest) {
   const dn = body?.dn ? safeDomain(body.dn) : null;
   if (body?.dn && !dn) return NextResponse.json({ error: "invalid domain" }, { status: 400 });
   const domain = dn || "moshcoding.com";
+  // Explicit ?ref in the request, else the first-touch mc_ref cookie (90 days).
+  const ref = cleanRef(body?.ref) || cleanRef(req.cookies.get("mc_ref")?.value);
+  // Brand the confirmation email with the tenant (from ?dn=), not "moshcoding".
+  const tenantOverride = await getTenantConfig(domain).catch(() => null);
+  const brand = configFor(domain, { tenantOverride }).brand;
 
   try {
-    const result = await addSignup({ email, dn: domain, ua: req.headers.get("user-agent") });
+    const result = await addSignup({ email, dn: domain, ua: req.headers.get("user-agent"), ref });
+    if (!result.already) void fireDomainEvent(domain, "waitlist.signup", { email, dn: domain, ref: ref || null });
 
     // Already confirmed — nothing to send.
     if (result.verified) {
@@ -30,14 +45,14 @@ export async function POST(req: NextRequest) {
     // Double opt-in: e-mail a confirmation link via Resend. If Resend isn't
     // configured (local dev / self-host), auto-confirm so the flow still works.
     if (result.token && isEmailConfigured()) {
-      const sent = await sendWaitlistVerification({ email, token: result.token });
+      const sent = await sendWaitlistVerification({ email, token: result.token, brand });
       if (!sent.ok) {
-        console.error("waitlist verification email failed:", sent.error);
-        // The signup is saved but unconfirmed — surface a retryable error.
-        return NextResponse.json(
-          { error: "Saved you, but the confirmation email didn't go out. Try again shortly." },
-          { status: 502 }
-        );
+        // Never block a signup because email is misconfigured (bad key, unverified
+        // domain, Resend down). Save them and auto-confirm; log loudly so the
+        // real problem is visible in the deploy logs.
+        console.error("waitlist verification email failed — auto-confirming instead:", sent.error);
+        if (result.token) await verifySignup(result.token);
+        return NextResponse.json({ ok: true, already: result.already, pending: false, emailFailed: true });
       }
       return NextResponse.json({ ok: true, already: result.already, pending: true });
     }

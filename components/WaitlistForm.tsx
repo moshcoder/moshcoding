@@ -25,10 +25,18 @@ export default function WaitlistForm({
     }
     setBusy(true);
     try {
+      // Carry a ?ref=<code> referral through to the signup for attribution.
+      const ref =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("ref")
+          : null;
+      const payload: Record<string, string> = { email: email.trim() };
+      if (dn) payload.dn = dn;
+      if (ref) payload.ref = ref;
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(dn ? { email: email.trim(), dn } : { email: email.trim() }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something broke.");

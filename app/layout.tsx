@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Script from "next/script";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://moshcoding.com"),
@@ -9,11 +10,10 @@ export const metadata: Metadata = {
   openGraph: {
     title: "#MOSHCODING — Code hard. Mosh harder.",
     description: "A Spotify playlist for developers who code hard and mosh harder.",
-    images: ["/assets/mascot-hero.png"],
+    images: ["/assets/avatar.png"],
   },
-  icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💀</text></svg>",
-  },
+  // Favicon + apple-touch icon come from app/icon.png and app/apple-icon.png
+  // (Next file convention) — the square skeleton-coder brand avatar.
 };
 
 export const viewport: Viewport = {
@@ -35,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="grain" aria-hidden="true" />
         <div className="scan" aria-hidden="true" />
         {children}
+              <Script data-site="51f5ac03-7e3a-452c-9c8d-5737bbbc30a5" src="https://crawlproof.com/stats.js" strategy="afterInteractive" />
       </body>
     </html>
   );

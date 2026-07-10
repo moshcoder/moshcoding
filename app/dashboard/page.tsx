@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
+import { copyText } from "@/lib/clipboard";
 
 type Org = { id: string; name: string };
 type Team = { id: string; name: string; org_id: string; org_name: string; role: string };
@@ -28,6 +29,7 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
+  const [tab, setTab] = useState<"page" | "waitlist" | "auctions" | "webhooks" | "affiliates">("page");
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -49,13 +51,28 @@ export default function Dashboard() {
     try { await fn(); await refresh(); } catch (e: any) { say(e.message, false); }
   };
 
+  const rename = (kind: "orgs" | "teams" | "projects", id: string, cur: string) => wrap(async () => {
+    const name = (typeof window !== "undefined" ? window.prompt("Rename to:", cur) : "")?.trim();
+    if (!name || name === cur) return;
+    await api(`/api/${kind}/${id}`, "PATCH", { name });
+    say("Renamed.");
+  });
+  const remove = (kind: "orgs" | "teams" | "projects", id: string, warn: string) => wrap(async () => {
+    if (typeof window !== "undefined" && !window.confirm(warn)) return;
+    await api(`/api/${kind}/${id}`, "DELETE");
+    say("Deleted.");
+  });
+
   if (me === undefined) return <div className="dash"><p className="sub">Loading…</p></div>;
   if (!me?.user) {
     return (
       <div className="dash">
         <h1>Dashboard</h1>
-        <p className="sub">Sign in to manage orgs, teams, projects &amp; webhooks.</p>
-        <a className="btn2" href="/auth/login">Log in with CoinPay</a>
+        <p className="sub">Sign in to manage your page, socials &amp; payout wallet.</p>
+        <div className="row">
+          <a className="btn2" href="/login">Log in</a>
+          <a className="btn2 ghost" href="/signup">Claim your page — free</a>
+        </div>
       </div>
     );
   }
@@ -68,13 +85,41 @@ export default function Dashboard() {
       </div>
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
 
+      <div className="tabs">
+        <button className={`tab${tab === "page" ? " on" : ""}`} onClick={() => setTab("page")}>My page &amp; teams</button>
+        <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
+        <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
+        <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
+        <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
+      </div>
+
+      {tab === "affiliates" ? (
+        <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "webhooks" ? (
+        <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "auctions" ? (
+        <AuctionsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "waitlist" ? (
+        <WaitlistPanel onError={(m) => say(m, false)} />
+      ) : (
+      <>
+      <AccountPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+
       <section className="card2">
         <h2>Organizations</h2>
         <div className="row">
           <input className="inp" placeholder="New org name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
           <button className="btn2" disabled={!orgName.trim()} onClick={wrap(async () => { await api("/api/orgs", "POST", { name: orgName.trim() }); setOrgName(""); say("Org created."); })}>Create org</button>
         </div>
-        <ul className="list">{orgs.map((o) => <li key={o.id}><span>{o.name}</span><span className="muted">{o.id.slice(0, 8)}</span></li>)}</ul>
+        <ul className="list">{orgs.map((o) => (
+          <li key={o.id}>
+            <span>{o.name}</span>
+            <span className="row-actions">
+              <button className="btn2 ghost" onClick={rename("orgs", o.id, o.name)}>Rename</button>
+              <button className="btn2 ghost" onClick={remove("orgs", o.id, `Delete org “${o.name}” and ALL its teams, projects & webhooks? This can't be undone.`)}>Delete</button>
+            </span>
+          </li>
+        ))}</ul>
       </section>
 
       <section className="card2">
@@ -87,7 +132,14 @@ export default function Dashboard() {
           <button className="btn2" disabled={!teamName.trim() || !teamOrg} onClick={wrap(async () => { await api("/api/teams", "POST", { name: teamName.trim(), org_id: teamOrg }); setTeamName(""); say("Team created."); })}>Create team</button>
         </div>
         <ul className="list">{teams.map((t) => (
-          <li key={t.id}><span>{t.name} <span className="muted">· {t.org_name}</span></span><span className="pill">{t.role}</span></li>
+          <li key={t.id}>
+            <span>{t.name} <span className="muted">· {t.org_name}</span></span>
+            <span className="row-actions">
+              <span className="pill">{t.role}</span>
+              <button className="btn2 ghost" onClick={rename("teams", t.id, t.name)}>Rename</button>
+              <button className="btn2 ghost" onClick={remove("teams", t.id, `Delete team “${t.name}” and its projects & webhooks?`)}>Delete</button>
+            </span>
+          </li>
         ))}</ul>
       </section>
 
@@ -100,7 +152,15 @@ export default function Dashboard() {
           </select>
           <button className="btn2" disabled={!projName.trim() || !projTeam} onClick={wrap(async () => { await api("/api/projects", "POST", { name: projName.trim(), team_id: projTeam }); setProjName(""); say("Project created."); })}>Create project</button>
         </div>
-        <ul className="list">{projects.map((p) => <li key={p.id}><span>{p.name} <span className="muted">· {p.team_name}</span></span></li>)}</ul>
+        <ul className="list">{projects.map((p) => (
+          <li key={p.id}>
+            <span>{p.name} <span className="muted">· {p.team_name}</span></span>
+            <span className="row-actions">
+              <button className="btn2 ghost" onClick={rename("projects", p.id, p.name)}>Rename</button>
+              <button className="btn2 ghost" onClick={remove("projects", p.id, `Delete project “${p.name}” and its webhooks?`)}>Delete</button>
+            </span>
+          </li>
+        ))}</ul>
       </section>
 
       {projects.map((p) => <ProjectWebhooks key={p.id} project={p} onError={(m) => say(m, false)} />)}
@@ -109,7 +169,672 @@ export default function Dashboard() {
         <h2>Invite a teammate</h2>
         <InviteForm teams={teams} onDone={(m, ok) => say(m, ok)} />
       </section>
+      </>
+      )}
     </div>
+  );
+}
+
+type LinkRow = { label: string; url: string };
+type BlockRow = { id: string; type: string; content: string; enabled: boolean };
+
+const newId = () =>
+  (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `b_${Math.floor(Math.random() * 1e9).toString(36)}`;
+
+function BlocksEditor({ rows, setRows }: { rows: BlockRow[]; setRows: (r: BlockRow[]) => void }) {
+  const set = (i: number, patch: Partial<BlockRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= rows.length) return;
+    const copy = [...rows];
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+    setRows(copy);
+  };
+  return (
+    <div>
+      <h3 className="ed-h">Content blocks <span className="muted">(markdown — headings, **bold**, `code`, ```fences```, lists, links)</span></h3>
+      {rows.map((r, i) => (
+        <div className={`block-ed${r.enabled ? "" : " paused"}`} key={r.id}>
+          <div className="block-bar">
+            <span className="muted">Block {i + 1}{r.enabled ? "" : " · paused"}</span>
+            <span className="block-actions">
+              <button className="btn2 ghost" type="button" title="Move up" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
+              <button className="btn2 ghost" type="button" title="Move down" onClick={() => move(i, 1)} disabled={i === rows.length - 1}>↓</button>
+              <button className="btn2 ghost" type="button" onClick={() => set(i, { enabled: !r.enabled })}>{r.enabled ? "Pause" : "Resume"}</button>
+              <button className="btn2 ghost" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Delete</button>
+            </span>
+          </div>
+          <textarea
+            className="block-ta" rows={5} placeholder={"## Heading\n\nSome **markdown** with a `code` snippet:\n\n```\nnpm i thing\n```"}
+            value={r.content} onChange={(e) => set(i, { content: e.target.value })}
+          />
+        </div>
+      ))}
+      <button className="btn2 ghost" type="button" onClick={() => setRows([...rows, { id: newId(), type: "markdown", content: "", enabled: true }])}>
+        + Add a block
+      </button>
+    </div>
+  );
+}
+type AccountView = {
+  email: string;
+  domain: string | null;
+  payout_wallet: string | null;
+  plan: string;
+  status: string;
+  is_admin?: boolean;
+  config: any;
+  pageUrl: string | null;
+  payUrl: string | null;
+};
+
+const PLATFORMS: [string, string, string][] = [
+  ["x", "X / Twitter", "@handle"],
+  ["bluesky", "Bluesky", "@you.bsky.social"],
+  ["instagram", "Instagram", "@handle"],
+  ["tiktok", "TikTok", "@handle"],
+  ["github", "GitHub", "username"],
+  ["youtube", "YouTube", "@channel"],
+];
+
+function LinkEditor({ title, rows, setRows }: { title: string; rows: LinkRow[]; setRows: (r: LinkRow[]) => void }) {
+  const set = (i: number, k: keyof LinkRow, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div>
+      <h3 className="ed-h">{title}</h3>
+      {rows.map((r, i) => (
+        <div className="row" key={i}>
+          <input className="inp" style={{ flex: "0 0 34%" }} placeholder="Label" value={r.label} onChange={(e) => set(i, "label", e.target.value)} />
+          <input className="inp" placeholder="https://…" value={r.url} onChange={(e) => set(i, "url", e.target.value)} />
+          <button className="btn2 ghost" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>
+        </div>
+      ))}
+      <button className="btn2 ghost" type="button" onClick={() => setRows([...rows, { label: "", url: "" }])}>+ add</button>
+    </div>
+  );
+}
+
+function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [acct, setAcct] = useState<AccountView | null | undefined>(undefined);
+  const [domains, setDomains] = useState<{ domain: string; count: number }[]>([]);
+  const [activeDomain, setActiveDomain] = useState("");
+  const [newDomain, setNewDomain] = useState("");
+  const [loadingCfg, setLoadingCfg] = useState(false);
+  const [socials, setSocials] = useState<Record<string, string>>({});
+  const [links, setLinks] = useState<LinkRow[]>([]);
+  const [sponsors, setSponsors] = useState<LinkRow[]>([]);
+  const [hashtags, setHashtags] = useState("");
+  const [audioStream, setAudioStream] = useState("");
+  const [videoStream, setVideoStream] = useState("");
+  const [fgRgba, setFgRgba] = useState("");
+  const [bgRgba, setBgRgba] = useState("");
+  const [text, setText] = useState<Record<string, string>>({ brand: "", headline: "", tagline: "", sub: "" });
+  const [wallet, setWallet] = useState("");
+  const [repo, setRepo] = useState("");
+  const [assetPattern, setAssetPattern] = useState("");
+  const [assets, setAssets] = useState<{ label: string; url: string }[]>([]);
+  const [blocks, setBlocks] = useState<BlockRow[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const hydrateConfig = (c: any) => {
+    c = c || {};
+    setRepo(c.repo || "");
+    setAssetPattern(c.assetPattern || "");
+    setAssets(c.assets || []);
+    setBlocks(Array.isArray(c.blocks) ? c.blocks : []);
+    setSocials(c.socials || {});
+    setLinks(c.customLinks || []);
+    setSponsors(c.sponsors || []);
+    setHashtags((c.hashtags || []).join(", "));
+    setAudioStream(c.audioStream || c.stream || "");
+    setVideoStream(c.videoStream || "");
+    setFgRgba(c.fgRgba || "");
+    setBgRgba(c.bgRgba || "");
+    setText({ brand: c.brand || "", headline: c.headline || "", tagline: c.tagline || "", sub: c.sub || "" });
+  };
+
+  const loadDomain = async (dn: string) => {
+    setActiveDomain(dn);
+    setLoadingCfg(true);
+    try {
+      const r = await fetch(`/api/tenant?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      hydrateConfig(d.config || {});
+    } catch (e: any) { onError(e.message || "Couldn't load."); hydrateConfig({}); }
+    finally { setLoadingCfg(false); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setAcct(d.account);
+      setDomains(d.parkedDomains || []);
+      setWallet(d.account?.payout_wallet || "");
+      const first = d.parkedDomains?.[0]?.domain || d.account?.domain || "";
+      if (first) loadDomain(first);
+    }).catch(() => setAcct(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (acct === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (acct === null) return null;
+
+  const addDomain = async () => {
+    const dn = newDomain.trim();
+    if (!dn) return;
+    try {
+      const r = await fetch("/api/tenant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ addDomain: dn }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDomains(d.domains || []);
+      setNewDomain("");
+      onOk("Domain added.");
+      loadDomain(d.dn);
+    } catch (e: any) { onError(e.message || "Couldn't add domain."); }
+  };
+
+  const removeDomain = async (dn: string) => {
+    if (!window.confirm(`Remove ${dn} and its page?`)) return;
+    try {
+      const r = await fetch(`/api/tenant?dn=${encodeURIComponent(dn)}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDomains(d.domains || []);
+      onOk("Domain removed.");
+      const next = (d.domains || [])[0]?.domain || "";
+      if (next) loadDomain(next); else { setActiveDomain(""); hydrateConfig({}); }
+    } catch (e: any) { onError(e.message || "Couldn't remove."); }
+  };
+
+  const save = async () => {
+    if (!activeDomain) { onError("Add a domain first."); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/tenant?dn=${encodeURIComponent(activeDomain)}`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          config: {
+            socials,
+            customLinks: links.filter((l) => l.url.trim()),
+            sponsors: sponsors.filter((l) => l.url.trim()),
+            hashtags,
+            audioStream: audioStream.trim(),
+            videoStream: videoStream.trim(),
+            fgRgba: fgRgba.trim(),
+            bgRgba: bgRgba.trim(),
+            repo: repo.trim(),
+            assetPattern: assetPattern.trim(),
+            blocks: blocks.map((b) => ({ ...b, content: b.content })),
+            ...text,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      hydrateConfig(data.config || {});
+      if (data.warning) onError(data.warning);
+      else onOk(`Saved & published to ${activeDomain}. 🤘`);
+    } catch (e: any) { onError(e.message || "Couldn't save."); }
+    finally { setSaving(false); }
+  };
+
+  const saveWallet = async () => {
+    try {
+      const r = await fetch("/api/account", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ payoutWallet: wallet.trim() }) });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error); }
+      onOk("Payout wallet saved.");
+    } catch (e: any) { onError(e.message || "Couldn't save."); }
+  };
+
+  const pageUrl = activeDomain ? `/?dn=${encodeURIComponent(activeDomain)}` : null;
+
+  return (
+    <section className="card2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>Your pages</h2>
+        <span className="pill">{acct.status === "active" ? `${acct.plan}` : "pending"}{acct.is_admin ? " · admin" : ""}</span>
+      </div>
+      <p className="sub">Each domain is its own project with its own settings. Add as many as you want.</p>
+
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${activeDomain === d.domain ? " on" : ""}`} onClick={() => loadDomain(d.domain)}>
+            {d.domain} <span className="muted">({d.count})</span>
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <input className="inp" placeholder="add a domain — e.g. moshcode.sh" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addDomain(); }} />
+        <button className="btn2" onClick={addDomain} disabled={!newDomain.trim()}>+ Add domain</button>
+      </div>
+
+      {!activeDomain ? (
+        <p className="sub" style={{ marginTop: 14 }}>Add a domain above to set up its page.</p>
+      ) : loadingCfg ? (
+        <p className="sub" style={{ marginTop: 14 }}>Loading {activeDomain}…</p>
+      ) : (
+      <>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+        <h3 className="ed-h" style={{ margin: 0 }}>Editing {activeDomain}</h3>
+        <span className="row" style={{ gap: 8 }}>
+          {pageUrl && <a className="btn2 ghost" href={pageUrl} target="_blank" rel="noopener noreferrer">View ↗</a>}
+          <button className="btn2 ghost" onClick={() => removeDomain(activeDomain)}>Remove</button>
+        </span>
+      </div>
+
+      <h3 className="ed-h">Copy <span className="muted">(optional — defaults are auto-generated)</span></h3>
+      <div className="row"><input className="inp" placeholder="Brand name" value={text.brand} onChange={(e) => setText({ ...text, brand: e.target.value })} /></div>
+      <div className="row"><input className="inp" placeholder="Headline (e.g. IS COMING)" value={text.headline} onChange={(e) => setText({ ...text, headline: e.target.value })} /></div>
+      <div className="row"><input className="inp" placeholder="Tagline" value={text.tagline} onChange={(e) => setText({ ...text, tagline: e.target.value })} /></div>
+      <div className="row"><input className="inp" placeholder="Sub-text" value={text.sub} onChange={(e) => setText({ ...text, sub: e.target.value })} /></div>
+
+      <BlocksEditor rows={blocks} setRows={setBlocks} />
+
+      <h3 className="ed-h">Socials</h3>
+      {PLATFORMS.map(([k, label, ph]) => (
+        <div className="row" key={k}>
+          <span className="muted" style={{ width: 92, flex: "0 0 92px" }}>{label}</span>
+          <input className="inp" placeholder={ph} value={socials[k] || ""} onChange={(e) => setSocials({ ...socials, [k]: e.target.value })} />
+        </div>
+      ))}
+
+      <LinkEditor title="Links" rows={links} setRows={setLinks} />
+      <LinkEditor title="Sponsors" rows={sponsors} setRows={setSponsors} />
+
+      <h3 className="ed-h">Hashtags <span className="muted">(comma-separated keywords)</span></h3>
+      <div className="row"><input className="inp" placeholder="moshcoding, launch" value={hashtags} onChange={(e) => setHashtags(e.target.value)} /></div>
+
+      <h3 className="ed-h">Streams <span className="muted">(shown as 🎧 Listen / 📺 Watch)</span></h3>
+      <div className="row">
+        <span className="muted" style={{ width: 92, flex: "0 0 92px" }}>🎧 Audio</span>
+        <input className="inp" placeholder="https://open.spotify.com/playlist/…" value={audioStream} onChange={(e) => setAudioStream(e.target.value)} />
+      </div>
+      <div className="row">
+        <span className="muted" style={{ width: 92, flex: "0 0 92px" }}>📺 Video</span>
+        <input className="inp" placeholder="https://twitch.tv/yourchannel" value={videoStream} onChange={(e) => setVideoStream(e.target.value)} />
+      </div>
+
+      <h3 className="ed-h">Accent colors <span className="muted">(rgba() or bare 255,0,80,1)</span></h3>
+      <div className="row">
+        <input className="inp" placeholder="foreground (fg_rgba)" value={fgRgba} onChange={(e) => setFgRgba(e.target.value)} />
+        <input className="inp" placeholder="background (bg_rgba)" value={bgRgba} onChange={(e) => setBgRgba(e.target.value)} />
+      </div>
+
+      <h3 className="ed-h">GitHub assets <span className="muted">(pull images from a repo onto your page)</span></h3>
+      <div className="row"><input className="inp" placeholder="owner/repo — e.g. moshcoder/moshcoding" value={repo} onChange={(e) => setRepo(e.target.value)} /></div>
+      <div className="row"><input className="inp" placeholder="path glob — e.g. images/*_thumb.png" value={assetPattern} onChange={(e) => setAssetPattern(e.target.value)} /></div>
+      {assets.length > 0 && (
+        <div className="t-assets" style={{ margin: "10px 0 0" }}>
+          {assets.slice(0, 12).map((a, i) => <span key={i} className="t-asset"><img src={a.url} alt={a.label} loading="lazy" /></span>)}
+        </div>
+      )}
+      {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN.</p>}
+
+      <div className="row" style={{ marginTop: 16 }}>
+        <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : `Save & publish ${activeDomain}`}</button>
+        {pageUrl && <a className="btn2 ghost" href={pageUrl} target="_blank" rel="noopener noreferrer">Preview ↗</a>}
+      </div>
+      </>
+      )}
+
+      <h3 className="ed-h">CoinPay payout wallet <span className="muted">(account-wide)</span></h3>
+      <div className="row">
+        <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
+        <button className="btn2 ghost" onClick={saveWallet}>Save wallet</button>
+      </div>
+    </section>
+  );
+}
+
+function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [signups, setSignups] = useState<any[] | null>(null);
+
+  const load = async (dn: string) => {
+    setActive(dn); setSignups(null);
+    try {
+      const r = await fetch(`/api/waitlist/manage?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setSignups(d.signups || []);
+    } catch (e: any) { onError(e.message || "Failed to load."); setSignups([]); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setDomains(d.parkedDomains || []);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab and its waitlist shows up here.</p></section>;
+  }
+
+  return (
+    <section className="card2">
+      <h2>Waitlist</h2>
+      <p className="sub">Each parked domain keeps its own waitlist.</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>
+            {d.domain} <span className="muted">({d.count})</span>
+          </button>
+        ))}
+      </div>
+      {active && (
+        <>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="ed-h">{active} — {signups ? signups.length : "…"} signups</h3>
+            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv`}>Export CSV</a>
+          </div>
+          <ul className="list">
+            {signups === null && <li className="muted">Loading…</li>}
+            {signups && signups.length === 0 && <li className="muted">No signups yet — share your page.</li>}
+            {signups && signups.map((s, i) => (
+              <li key={i}>
+                <span>{s.email}</span>
+                <span className="muted">{s.verified ? "✓ confirmed" : "pending"}{s.ref ? ` · ref:${s.ref}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [data, setData] = useState<any | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = async (dn: string) => {
+    setActive(dn); setData(null);
+    try {
+      const r = await fetch(`/api/domain-webhooks?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setData(d);
+    } catch (e: any) { onError(e.message || "Failed to load."); setData({ webhooks: [], events: [] }); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setDomains(d.parkedDomains || []);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const act = async (payload: any, ok: string) => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/domain-webhooks", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dn: active, ...payload }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk(ok); await load(active);
+    } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
+  };
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Webhooks</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab to get hosted webhooks.</p></section>;
+  }
+
+  return (
+    <section className="card2">
+      <h2>Webhooks</h2>
+      <p className="sub">Every parked domain gets hosted webhooks — no server to run. <b>Inbound:</b> POST events to the URL below. <b>Outbound:</b> we POST domain events (waitlist.signup, bid.placed/won/accepted) to your URLs, signed (Standard Webhooks).</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>{d.domain}</button>
+        ))}
+      </div>
+      {active && data && (
+        <>
+          <h3 className="ed-h">Inbound URL <span className="muted">(send events here — no app needed)</span></h3>
+          <div className="row"><input className="inp" readOnly value={data.inboundUrl || ""} /><button className="btn2 ghost" onClick={() => copyText(data.inboundUrl || "")}>Copy</button></div>
+
+          <h3 className="ed-h">Outbound targets</h3>
+          <div className="row">
+            <input className="inp" placeholder="https://your-app.com/hook  or a Discord/Slack/Zapier URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <button className="btn2" disabled={busy || !url.trim()} onClick={() => { act({ url: url.trim() }, "Webhook added."); setUrl(""); }}>Add</button>
+            <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "test" }, "Test event dispatched.")}>Send test</button>
+          </div>
+          <ul className="list">
+            {(!data.webhooks || data.webhooks.length === 0) && <li className="muted">No outbound targets yet.</li>}
+            {data.webhooks?.map((w: any) => (
+              <li key={w.id}>
+                <span>{w.url} <span className="muted">· secret {String(w.secret).slice(0, 12)}…</span></span>
+                <span className="row-actions">
+                  <button className="btn2 ghost" onClick={() => copyText(w.secret)}>Copy secret</button>
+                  <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "delete", id: w.id }, "Removed.")}>Delete</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <h3 className="ed-h">Recent inbound events ({data.events?.length || 0})</h3>
+          <ul className="list">
+            {(!data.events || data.events.length === 0) && <li className="muted">Nothing received yet.</li>}
+            {data.events?.map((e: any) => (
+              <li key={e.id}>
+                <span><b>{e.event_type || "event"}</b> <span className="muted">{e.source ? `· ${String(e.source).slice(0, 40)}` : ""}</span></span>
+                <span className="muted">{e.created_at}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function AuctionsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [domains, setDomains] = useState<any[] | undefined>(undefined);
+  const [active, setActive] = useState<string | null>(null);
+  const [data, setData] = useState<any | null>(null);
+  const [reserve, setReserve] = useState("");
+  const [buyNow, setBuyNow] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const money = (c: number) => `$${(c / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+  const load = async (dn: string) => {
+    setActive(dn); setData(null);
+    try {
+      const r = await fetch(`/api/auctions?dn=${encodeURIComponent(dn)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setData(d);
+      setReserve(d.reserveCents != null ? String(d.reserveCents / 100) : "");
+      setBuyNow(d.buyNowCents != null ? String(d.buyNowCents / 100) : "");
+    } catch (e: any) { onError(e.message || "Failed to load."); setData({ bids: [] }); }
+  };
+
+  useEffect(() => {
+    fetch("/api/account").then((r) => r.json()).then((d) => {
+      setDomains(d.parkedDomains || []);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+    }).catch(() => setDomains([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async () => {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auctions", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dn: active, reserve, buyNow }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("Auction saved."); await load(active);
+    } catch (e: any) { onError(e.message || "Save failed."); } finally { setBusy(false); }
+  };
+
+  const accept = async (bidId: string, email: string) => {
+    if (!active || !confirm(`Accept the bid from ${email}? This closes the auction.`)) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/auctions", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dn: active, action: "accept", bidId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("Bid accepted — auction closed."); await load(active);
+    } catch (e: any) { onError(e.message || "Accept failed."); } finally { setBusy(false); }
+  };
+
+  if (domains === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  if (!domains.length) {
+    return <section className="card2"><h2>Auctions</h2><p className="sub">No parked domains yet — claim one on the “My page &amp; teams” tab, then set a reserve/buy-now and collect bids here.</p></section>;
+  }
+
+  const closed = data?.status === "closed";
+  return (
+    <section className="card2">
+      <h2>Auctions</h2>
+      <p className="sub">Each parked domain collects bids forever, until you accept one. Reserve is hidden from bidders; a bid at or above buy-now wins instantly.</p>
+      <div className="tabs" style={{ flexWrap: "wrap" }}>
+        {domains.map((d) => (
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>
+            {d.domain}
+          </button>
+        ))}
+      </div>
+      {active && data && (
+        <>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="ed-h">{active} {closed ? "— closed 🔒" : ""}</h3>
+            <a className="btn2 ghost" href={`/?bid=${encodeURIComponent(active)}`} target="_blank" rel="noopener noreferrer">View bid page ↗</a>
+          </div>
+
+          <div className="ed-grid">
+            <label>Reserve price (USD)
+              <input type="number" min="0" step="1" placeholder="hidden from bidders" value={reserve} onChange={(e) => setReserve(e.target.value)} disabled={closed} />
+            </label>
+            <label>Buy-it-now price (USD)
+              <input type="number" min="0" step="1" placeholder="optional instant win" value={buyNow} onChange={(e) => setBuyNow(e.target.value)} disabled={closed} />
+            </label>
+          </div>
+          {!closed && <button className="btn2" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save auction"}</button>}
+
+          <h3 className="ed-h" style={{ marginTop: 18 }}>Bids ({data.bids?.length || 0})</h3>
+          <ul className="list">
+            {(!data.bids || data.bids.length === 0) && <li className="muted">No bids yet — share the bid page.</li>}
+            {data.bids?.map((b: any) => (
+              <li key={b.id}>
+                <span><b>{money(b.amount_cents)}</b> — {b.bidder_email}{b.message ? <span className="muted"> · “{b.message}”</span> : null}</span>
+                <span>
+                  {b.status === "accepted" ? <span className="muted">✓ accepted</span>
+                    : b.status === "rejected" ? <span className="muted">passed</span>
+                    : closed ? null
+                    : <button className="btn2 ghost" onClick={() => accept(b.id, b.bidder_email)} disabled={busy}>Accept</button>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [data, setData] = useState<any>(undefined);
+  const [pct, setPct] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    fetch("/api/affiliate").then((r) => r.json()).then((d) => {
+      setData(d);
+      if (d.affiliate) setPct(String(d.affiliate.commission_pct));
+    }).catch(() => setData({ affiliate: null, floor: 80 }));
+  useEffect(() => { load(); }, []);
+
+  if (data === undefined) return <section className="card2"><p className="sub">Loading…</p></section>;
+  const aff = data.affiliate;
+  const copy = (t: string) => copyText(t).then((ok) => onOk(ok ? "Copied. 🤘" : "Couldn't copy — select the text and copy manually."));
+
+  const post = async (body: any, okMsg: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/affiliate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setData(d);
+      if (d.affiliate) setPct(String(d.affiliate.commission_pct));
+      onOk(okMsg);
+    } catch (e: any) { onError(e.message || "Failed."); }
+    finally { setBusy(false); }
+  };
+
+  if (!aff) {
+    return (
+      <section className="card2">
+        <h2>Affiliates</h2>
+        <p className="sub">
+          Earn <b>up to 80% commission</b> on all fees from people you refer. The free plan is floored at
+          80% minimum payout; upgrade to <b>$1/mo</b> to set your own rate. Clicks are tracked with a
+          <b> 90-day cookie</b> — you're credited if they sign up within 90 days.
+        </p>
+        <button className="btn2" disabled={busy} onClick={() => post({}, "You're an affiliate. 🤘")}>
+          {busy ? "…" : "Become an 80% affiliate"}
+        </button>
+        <p className="sub" style={{ marginTop: 8 }}>Requires a claimed page. <a href="/signup">Claim yours — free</a>.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>Affiliates</h2>
+        <span className="pill">{aff.plan === "paid" ? "paid · custom rate" : `free · ${aff.commission_pct}% floor`}</span>
+      </div>
+      <ul className="list">
+        <li><span>Your code</span><span className="muted">{aff.code}</span></li>
+        <li><span>Commission</span><span className="muted">{aff.commission_pct}%</span></li>
+      </ul>
+
+      <h3 className="ed-h">Share links</h3>
+      <div className="row"><input className="inp" readOnly value={aff.shareUrl} /><button className="btn2 ghost" onClick={() => copy(aff.shareUrl)}>Copy</button></div>
+      <div className="row"><input className="inp" readOnly value={aff.refUrl} /><button className="btn2 ghost" onClick={() => copy(aff.refUrl)}>Copy</button></div>
+      <p className="sub" style={{ marginTop: 8 }}>🍪 Any visit to one of these links drops a <b>90-day first-touch cookie</b> — you get credit if they sign up within 90 days, even later.</p>
+
+      <h3 className="ed-h">Commission rate</h3>
+      {aff.plan === "paid" ? (
+        <div className="row">
+          <input className="inp" type="number" min={1} max={100} value={pct} onChange={(e) => setPct(e.target.value)} />
+          <button className="btn2" disabled={busy} onClick={() => post({ action: "setCommission", commission_pct: Number(pct) }, "Commission updated.")}>Save</button>
+        </div>
+      ) : (
+        <p className="sub">Locked at the {data.floor}% floor on the free plan. <b>Upgrade to $1/mo</b> to lower it. <span className="muted">(recurring billing coming soon)</span></p>
+      )}
+
+      <h3 className="ed-h">Referred users ({data.referrals?.length || 0})</h3>
+      <ul className="list">
+        {(data.referrals || []).map((r: any, i: number) => (
+          <li key={i}><span>{r.domain || r.email}</span><span className="muted">{r.status}</span></li>
+        ))}
+        {(!data.referrals || !data.referrals.length) && <li className="muted">No referrals yet — share your link.</li>}
+      </ul>
+    </section>
   );
 }
 
