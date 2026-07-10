@@ -93,6 +93,41 @@ export function sendWaitlistVerification(opts: {
   return send({ to: opts.email, subject, html, text });
 }
 
+/** Notifies that a GitHub PR or issue was closed. */
+export function sendGithubClosedNotification(opts: {
+  to: string;
+  kind: "pull request" | "issue";
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  actor: string;
+  merged?: boolean;
+}): Promise<SendResult> {
+  const verb = opts.kind === "pull request" && opts.merged ? "merged" : "closed";
+  const subject = `[${opts.repo}] ${opts.kind} #${opts.number} ${verb}: ${opts.title}`.slice(0, 180);
+  const text =
+    `${opts.actor} ${verb} ${opts.kind} #${opts.number} in ${opts.repo}\n\n` +
+    `${opts.title}\n${opts.url}\n`;
+  const html = `<!doctype html>
+<html><body style="margin:0;background:#0b0b0c;color:#e7e7e7;font-family:ui-monospace,Menlo,Consolas,monospace">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 16px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:24px">
+        <tr><td>
+          <p style="margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#8a8a8a">${opts.repo}</p>
+          <h1 style="margin:0 0 12px;font-size:18px;color:#9EF01A">${opts.kind} #${opts.number} ${verb} 🤘</h1>
+          <p style="margin:0 0 16px;line-height:1.5;color:#d6d6d6">${opts.title}</p>
+          <p style="margin:0 0 18px;font-size:13px;color:#9a9a9a">by ${opts.actor}</p>
+          <a href="${opts.url}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px">View on GitHub</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  return send({ to: opts.to, subject, html, text });
+}
+
 /** Sends a password-reset link. Caller falls back to logging the link if unsent. */
 export function sendPasswordReset(opts: {
   email: string;
