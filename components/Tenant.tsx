@@ -12,7 +12,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
   return (
     <div className="tenant" style={accentStyle}>
       <div className="tenant-wrap">
-        <a className="powered" href="https://moshcoding.com" rel="noopener noreferrer">⚡ powered by <b>#moshcoding</b></a>
+        <a className="powered" href="https://moshcoding.com" target="_blank" rel="noopener noreferrer">⚡ powered by <b>#moshcoding</b></a>
         {cfg.styles.length > 0 && (
           <img
             className="t-hero"
@@ -82,7 +82,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
         <footer className="t-foot">
-          &copy; 2026 <a href="https://moshcoding.com" rel="noopener noreferrer">powered by moshcoding.com</a>
+          &copy; 2026 <a href="https://moshcoding.com" target="_blank" rel="noopener noreferrer">powered by moshcoding.com</a>
         </footer>
       </div>
     </div>
