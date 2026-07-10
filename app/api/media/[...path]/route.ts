@@ -23,7 +23,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path: strin
   try { stat = await fsp.stat(full); if (!stat.isFile()) throw 0; } catch { return new Response("not found", { status: 404 }); }
 
   const size = stat.size;
-  const type = "video/mp4";
+  const ext = path.extname(full).toLowerCase();
+  const type =
+    ext === ".png" ? "image/png"
+    : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg"
+    : ext === ".webp" ? "image/webp"
+    : ext === ".webm" ? "video/webm"
+    : ext === ".mov" ? "video/quicktime"
+    : "video/mp4";
   const range = req.headers.get("range");
 
   if (range) {
