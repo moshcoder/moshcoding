@@ -1,28 +1,11 @@
 /** @type {import('next').NextConfig} */
-
-// Parked domains that are allowed to frame moshcoding.com (Porkbun masked/
-// frameset forwarding, e.g. moshcode.sh). Space-separated origins in the
-// FRAME_ANCESTORS env; moshcode.sh is allowed by default. 'self' lets the app
-// frame itself. Nothing else can frame it (anti-clickjacking), but these can.
-const PARKED = (process.env.FRAME_ANCESTORS || "https://moshcode.sh")
-  .split(/\s+/)
-  .filter(Boolean);
-const frameAncestors = ["'self'", ...PARKED].join(" ");
-
+// NOTE: the CSP frame-ancestors allow-list (parked domains that may frame the
+// app, e.g. moshcode.sh) is set at runtime in middleware.ts so FRAME_ANCESTORS
+// env changes apply without a rebuild.
 const nextConfig = {
   reactStrictMode: true,
   // brand assets are large PNGs served straight from /public
   poweredByHeader: false,
-  async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: [
-          { key: "Content-Security-Policy", value: `frame-ancestors ${frameAncestors}` },
-        ],
-      },
-    ];
-  },
 };
 
 export default nextConfig;
