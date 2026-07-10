@@ -14,12 +14,20 @@ export default async function Page({
   const dn = safeDomain(sp.dn);
   if (!dn) return <Landing />;
 
-  // collect ?social_x=&social_bluesky=… into a per-platform map
+  // collect ?social_x=&social_bluesky=… into a per-platform map, and
+  // ?link_1=&link_2=… arbitrary custom links (our apps etc.) into another.
   const social: Record<string, string> = {};
+  const linkParams: Record<string, string> = {};
   for (const [k, v] of Object.entries(sp)) {
-    const m = k.match(/^social_(.+)$/i);
-    if (m && typeof v === "string") social[m[1]] = v;
+    if (typeof v !== "string") continue;
+    const sm = k.match(/^social_(.+)$/i);
+    if (sm) { social[sm[1]] = v; continue; }
+    if (/^link_?\d+$/i.test(k)) linkParams[k] = v;
   }
 
-  return <Tenant cfg={configFor(dn, { socials: sp.socials, fallback: sp.fallback, social, style: sp.style })} />;
+  return (
+    <Tenant
+      cfg={configFor(dn, { socials: sp.socials, fallback: sp.fallback, social, style: sp.style, linkParams })}
+    />
+  );
 }

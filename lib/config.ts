@@ -118,7 +118,32 @@ export type TenantOverrides = {
   social?: Record<string, string | undefined | null>;
   /** Raw ?style= value, e.g. "metal,punk". */
   style?: string | null;
+  /** Raw ?link_1=&link_2=… custom-link params (arbitrary links, e.g. our apps). */
+  linkParams?: Record<string, string | undefined | null>;
 };
+
+/**
+ * Parses ?link_1=&link_2=… custom links. Each value is either a bare/full URL
+ * (label derived from the hostname) or "Label|https://url" so a tenant can name
+ * the link (e.g. an app). Ordered by the numeric suffix; invalid URLs dropped.
+ */
+export function parseLinks(raw: TenantOverrides["linkParams"]): TenantLink[] {
+  if (!raw) return [];
+  const out: Array<{ n: number; link: TenantLink }> = [];
+  for (const [k, v] of Object.entries(raw)) {
+    const m = k.match(/^link_?(\d+)$/i);
+    if (!m || typeof v !== "string" || !v.trim()) continue;
+    let label = "";
+    let target = v.trim();
+    const bar = target.indexOf("|");
+    if (bar > -1) { label = target.slice(0, bar).trim(); target = target.slice(bar + 1).trim(); }
+    const url = fallbackUrl(target);
+    if (!url) continue;
+    if (!label) { try { label = new URL(url).hostname.replace(/^www\./, ""); } catch { label = url; } }
+    out.push({ n: Number(m[1]), link: { label: label.slice(0, 60), url, kind: "link" } });
+  }
+  return out.sort((a, b) => a.n - b.n).map((x) => x.link);
+}
 
 export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig {
   const base = {
@@ -173,12 +198,14 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
   }
 
   const slug = dn.split(".")[0].replace(/[^a-z0-9]/g, "");
+  // Socials/website first, then any custom ?link_N= links (our apps etc.).
+  const links = [...socialLinks(dn, override), ...parseLinks(opts.linkParams)];
   return {
     ...base,
     ...override,
     dn,
     hashtag: override.hashtag || (sh ? `#${sh}` : `#${slug}`),
-    links: socialLinks(dn, override),
+    links,
     styles: parseStyles(opts.style),
   };
 }
