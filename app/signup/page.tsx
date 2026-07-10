@@ -49,6 +49,8 @@ export default function SignupPage() {
         <div><h1>Claim your page</h1><p className="sub">One-time <b>$1</b> via CoinPay sets up your linktree at moshcoding.com/?dn=your-domain.</p></div>
         <a className="btn2 ghost" href="/">← home</a>
       </div>
+
+      <p className="earn-banner">🤘 Earn up to <b>80% commission</b> on all fees generated with your custom affiliate code.</p>
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
 
       <form className="card2" onSubmit={submit}>

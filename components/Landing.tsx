@@ -1,6 +1,7 @@
 import AuthSlot from "./AuthSlot";
 import SummonDemo from "./SummonDemo";
 import WaitlistForm from "./WaitlistForm";
+import QueryHelp from "./QueryHelp";
 
 const TICKER = ["BUILD. BREAK. REPEAT.", "NO BUGS, JUST FEATURES", "DEADLINES ARE FOR THE WEAK", "PUSH CODE, START PITS"];
 
@@ -52,7 +53,10 @@ export default function Landing() {
         <h2>One line. A metal coming-soon page.</h2>
         <p className="lede">Point any domain at moshcoding and it gets a blacked-out, poison-green launch page with a working email waitlist. No build, no deploy.</p>
         <SummonDemo />
-        <p className="hint">Try it: <a href="/?dn=example.com">example.com</a> · <a href="/?dn=killer-startup.io">killer-startup.io</a></p>
+        <p className="hint">
+          Try it: <a href="/?dn=example.com">example.com</a> · <a href="/?dn=killer-startup.io">killer-startup.io</a>
+          {" "}<QueryHelp />
+        </p>
       </section>
 
       <section className="badges">
