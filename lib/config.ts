@@ -24,8 +24,12 @@ export type TenantConfig = {
   styles: string[];
   /** Optional background accent (rgba) from ?bg_rgba=; null = use the theme default. */
   bgAccent: string | null;
-  /** Optional ?stream= playlist/stream URL — rendered as a prominent ▶ Stream CTA. */
+  /** Optional ?stream= playlist/stream URL — legacy; folded into audioStream. */
   stream: string | null;
+  /** ?audio= audio stream/playlist (Spotify, Apple Music, SoundCloud…) → 🎧 Listen. */
+  audioStream: string | null;
+  /** ?video= live/video stream (Twitch, YouTube, Kick…) → 📺 Watch. */
+  videoStream: string | null;
   /** Optional ?code_block= snippet rendered in a monospace block (React-escaped). */
   codeBlock: string | null;
   /** CrawlProof ad slot (UUID). Defaults on for every tenant; null = disabled. */
@@ -252,6 +256,10 @@ export type TenantOverrides = {
   bgRgba?: string | null;
   /** ?stream= playlist/stream URL (Spotify/YouTube/SoundCloud/…). */
   stream?: string | null;
+  /** ?audio= audio stream URL. */
+  audioStream?: string | null;
+  /** ?video= video/live stream URL. */
+  videoStream?: string | null;
   /** ?code_block= raw snippet text (rendered escaped in a <pre>). */
   codeBlock?: string | null;
   /** ?ad_block= override: a data-cp-ad snippet / "slot|format" / "none" to disable. */
@@ -418,6 +426,11 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     accent: coerceRgba(opts.fgRgba) || coerceRgba(ov.fgRgba) || DEFAULT_ACCENT,
     bgAccent: coerceRgba(opts.bgRgba) || coerceRgba(ov.bgRgba),
     stream: fallbackUrl(opts.stream) || fallbackUrl(ov.stream),
+    // Audio falls back to the legacy single `stream` so existing tenants keep working.
+    audioStream:
+      fallbackUrl(opts.audioStream) || fallbackUrl(ov.audioStream) ||
+      fallbackUrl(opts.stream) || fallbackUrl(ov.stream),
+    videoStream: fallbackUrl(opts.videoStream) || fallbackUrl(ov.videoStream),
     codeBlock: cleanCode(opts.codeBlock) || cleanCode(ov.codeBlock),
     // Ad: ?ad_block= query wins, then the saved tenant value, else the default
     // CrawlProof unit. `null` from either (e.g. ad_block=none) disables it.

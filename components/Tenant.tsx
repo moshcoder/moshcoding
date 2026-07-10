@@ -29,8 +29,15 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         <p className="t-tag">{cfg.tagline}</p>
         <p className="t-sub">{cfg.sub}</p>
 
-        {cfg.stream && (
-          <a className="t-stream" href={cfg.stream} target="_blank" rel="noopener noreferrer">▶ Stream</a>
+        {(cfg.audioStream || cfg.videoStream) && (
+          <div className="t-streams">
+            {cfg.audioStream && (
+              <a className="t-stream" href={cfg.audioStream} target="_blank" rel="noopener noreferrer">🎧 Listen</a>
+            )}
+            {cfg.videoStream && (
+              <a className="t-stream" href={cfg.videoStream} target="_blank" rel="noopener noreferrer">📺 Watch</a>
+            )}
+          </div>
         )}
 
         <WaitlistForm dn={cfg.dn} cta={cfg.cta} big />

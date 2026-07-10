@@ -389,3 +389,5 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 /* ?stream= playlist CTA */
 .t-stream { display: inline-flex; align-items: center; gap: 8px; margin: 0 auto 16px; padding: 11px 22px; border-radius: 999px; font-family: var(--mono); font-weight: 700; font-size: 14px; text-decoration: none; background: var(--tenant-accent, var(--acid)); color: #0a0a0a; transition: transform .15s ease, filter .15s ease; }
 .t-stream:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.t-streams { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 auto 16px; }
+.t-streams .t-stream { margin: 0; }

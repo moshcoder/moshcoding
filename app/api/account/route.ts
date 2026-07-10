@@ -63,6 +63,10 @@ function sanitizeConfig(body: any): Record<string, any> {
 
   const stream = normalizeUrl(body?.stream);
   if (stream) c.stream = stream;
+  const audioStream = normalizeUrl(body?.audioStream ?? body?.audio);
+  if (audioStream) c.audioStream = audioStream;
+  const videoStream = normalizeUrl(body?.videoStream ?? body?.video);
+  if (videoStream) c.videoStream = videoStream;
 
   const fg = coerceRgba(body?.fgRgba ?? body?.fg_rgba);
   if (fg) c.fgRgba = fg;

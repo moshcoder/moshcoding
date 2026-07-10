@@ -223,7 +223,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [sponsors, setSponsors] = useState<LinkRow[]>([]);
   const [hashtags, setHashtags] = useState("");
-  const [stream, setStream] = useState("");
+  const [audioStream, setAudioStream] = useState("");
+  const [videoStream, setVideoStream] = useState("");
   const [fgRgba, setFgRgba] = useState("");
   const [bgRgba, setBgRgba] = useState("");
   const [text, setText] = useState<Record<string, string>>({ brand: "", headline: "", tagline: "", sub: "" });
@@ -246,7 +247,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     setLinks(c.customLinks || []);
     setSponsors(c.sponsors || []);
     setHashtags((c.hashtags || []).join(", "));
-    setStream(c.stream || "");
+    setAudioStream(c.audioStream || c.stream || "");
+    setVideoStream(c.videoStream || "");
     setFgRgba(c.fgRgba || "");
     setBgRgba(c.bgRgba || "");
     setText({ brand: c.brand || "", headline: c.headline || "", tagline: c.tagline || "", sub: c.sub || "" });
@@ -275,7 +277,8 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
             customLinks: links.filter((l) => l.url.trim()),
             sponsors: sponsors.filter((l) => l.url.trim()),
             hashtags,
-            stream: stream.trim(),
+            audioStream: audioStream.trim(),
+            videoStream: videoStream.trim(),
             fgRgba: fgRgba.trim(),
             bgRgba: bgRgba.trim(),
             repo: repo.trim(),
@@ -337,8 +340,15 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       <h3 className="ed-h">Hashtags <span className="muted">(comma-separated keywords)</span></h3>
       <div className="row"><input className="inp" placeholder="moshcoding, launch" value={hashtags} onChange={(e) => setHashtags(e.target.value)} /></div>
 
-      <h3 className="ed-h">Stream URL</h3>
-      <div className="row"><input className="inp" placeholder="https://open.spotify.com/playlist/…" value={stream} onChange={(e) => setStream(e.target.value)} /></div>
+      <h3 className="ed-h">Streams <span className="muted">(shown as 🎧 Listen / 📺 Watch)</span></h3>
+      <div className="row">
+        <span className="muted" style={{ width: 92, flex: "0 0 92px" }}>🎧 Audio</span>
+        <input className="inp" placeholder="https://open.spotify.com/playlist/…" value={audioStream} onChange={(e) => setAudioStream(e.target.value)} />
+      </div>
+      <div className="row">
+        <span className="muted" style={{ width: 92, flex: "0 0 92px" }}>📺 Video</span>
+        <input className="inp" placeholder="https://twitch.tv/yourchannel" value={videoStream} onChange={(e) => setVideoStream(e.target.value)} />
+      </div>
 
       <h3 className="ed-h">Accent colors <span className="muted">(rgba() or bare 255,0,80,1)</span></h3>
       <div className="row">
