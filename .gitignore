@@ -8,3 +8,4 @@ next-env.d.ts
 *.log
 .DS_Store
 tmp/
+tsconfig.tsbuildinfo

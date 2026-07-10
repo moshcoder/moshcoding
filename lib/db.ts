@@ -1,4 +1,5 @@
 import { createClient, type Client } from "@libsql/client";
+import { randomBytes } from "node:crypto";
 
 let _db: Client | undefined;
 
@@ -32,6 +33,11 @@ async function initSchema(): Promise<void> {
   await d.execute(
     `CREATE UNIQUE INDEX IF NOT EXISTS signups_email_dn ON signups (email, dn)`
   );
+  // Double opt-in columns. Added via ALTER so pre-existing signups tables (in
+  // production) pick them up; SQLite has no ADD COLUMN IF NOT EXISTS, so we
+  // swallow the "duplicate column name" error on repeat runs.
+  await addColumnIfMissing("signups", "token", "TEXT");
+  await addColumnIfMissing("signups", "verified_at", "TEXT");
   await d.execute(`
     CREATE TABLE IF NOT EXISTS users (
       sub        TEXT PRIMARY KEY,
@@ -156,15 +162,77 @@ async function initSchema(): Promise<void> {
   `);
 }
 
-export async function addSignup(opts: { email: string; dn?: string | null; ua?: string | null }) {
+/** Adds ADD COLUMN, ignoring the error when the column already exists. */
+async function addColumnIfMissing(table: string, column: string, type: string): Promise<void> {
+  try {
+    await db().execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  } catch (err: any) {
+    if (!/duplicate column name/i.test(String(err?.message))) throw err;
+  }
+}
+
+export type SignupResult = {
+  ok: true;
+  already: boolean;
+  verified: boolean;
+  /** Verification token for the (new or still-unverified) signup, or null once verified. */
+  token: string | null;
+};
+
+/**
+ * Records a waitlist signup as UNVERIFIED with a fresh verification token. On a
+ * repeat signup that is still unverified it refreshes the token (so the route
+ * can re-send the confirmation email); an already-verified signup is left alone.
+ */
+export async function addSignup(opts: {
+  email: string;
+  dn?: string | null;
+  ua?: string | null;
+}): Promise<SignupResult> {
   await ensureSchema();
   const domain = opts.dn || "moshcoding.com";
+  const email = opts.email.toLowerCase();
+  const token = randomBytes(24).toString("base64url");
+
   const res = await db().execute({
-    sql: `INSERT INTO signups (email, dn, ua) VALUES (?, ?, ?)
+    sql: `INSERT INTO signups (email, dn, ua, token) VALUES (?, ?, ?, ?)
           ON CONFLICT (email, dn) DO NOTHING`,
-    args: [opts.email.toLowerCase(), domain, (opts.ua || "").slice(0, 300)],
+    args: [email, domain, (opts.ua || "").slice(0, 300), token],
   });
-  return { ok: true, already: res.rowsAffected === 0 };
+  if (res.rowsAffected > 0) {
+    return { ok: true, already: false, verified: false, token };
+  }
+
+  // Already on the list — report verification state, refreshing the token for a
+  // resend when they still haven't confirmed.
+  const existing = await db().execute({
+    sql: `SELECT verified_at FROM signups WHERE email = ? AND dn = ?`,
+    args: [email, domain],
+  });
+  const verified = Boolean(existing.rows[0]?.verified_at);
+  if (verified) return { ok: true, already: true, verified: true, token: null };
+
+  await db().execute({
+    sql: `UPDATE signups SET token = ? WHERE email = ? AND dn = ? AND verified_at IS NULL`,
+    args: [token, email, domain],
+  });
+  return { ok: true, already: true, verified: false, token };
+}
+
+/** Marks the signup owning token as verified. Returns the row's email/dn, or null. */
+export async function verifySignup(token: string): Promise<{ email: string; dn: string } | null> {
+  if (!token) return null;
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `UPDATE signups
+             SET verified_at = COALESCE(verified_at, datetime('now')), token = NULL
+           WHERE token = ?
+           RETURNING email, dn`,
+    args: [token],
+  });
+  const row = res.rows[0];
+  if (!row) return null;
+  return { email: String(row.email), dn: String(row.dn) };
 }
 
 export async function signupCount(): Promise<number> {

@@ -8,10 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ dn?: string }>;
+  searchParams: Promise<{ dn?: string; socials?: string; fallback?: string }>;
 }) {
   const sp = await searchParams;
   const dn = safeDomain(sp?.dn);
-  if (dn) return <Tenant cfg={configFor(dn)} />;
+  if (dn) return <Tenant cfg={configFor(dn, { socials: sp?.socials, fallback: sp?.fallback })} />;
   return <Landing />;
 }

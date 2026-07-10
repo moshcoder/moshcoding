@@ -32,7 +32,14 @@ export default function WaitlistForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something broke.");
-      setMsg({ text: data.already ? "You're already in the pit. 🤘" : "You're in. Watch your inbox. 🤘", ok: true });
+      const text = data.verified
+        ? "You're already confirmed. 🤘"
+        : data.pending
+          ? "Check your inbox to confirm your spot. 🤘"
+          : data.already
+            ? "You're already in the pit. 🤘"
+            : "You're in. 🤘";
+      setMsg({ text, ok: true });
       setEmail("");
     } catch (err: any) {
       setMsg({ text: err.message || "Network died. Try again.", ok: false });
