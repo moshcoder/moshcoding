@@ -89,8 +89,6 @@ export function sendWaitlistVerification(opts: {
       </table>
     </td></tr>
   </table>
-  <div data-cp-ad data-slot="fd4ff2e8-db11-438f-8151-3054aa5e1e4c" data-format="banner_300x250"></div>
-    <script src="https://crawlproof.com/ad.js" async></script>
 </body></html>`;
   return send({ to: opts.email, subject, html, text });
 }
