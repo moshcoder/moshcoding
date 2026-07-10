@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { getAffiliate, enrollAffiliate, setAffiliateCommission, listReferrals, AFFILIATE_FLOOR } from "@/lib/db";
+import { getAffiliate, enrollAffiliate, setAffiliateCommission, listReferrals, AFFILIATE_FLOOR, findOrCreateAccountByEmail } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function accountId(req: NextRequest): string | null {
+/** Resolves the tenant account for the session: native (acct:) or CoinPay (by email). */
+async function accountId(req: NextRequest): Promise<string | null> {
   if (!authConfigured()) return null;
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!s?.sub?.startsWith("acct:")) return null;
-  return s.sub.slice("acct:".length);
+  if (!s) return null;
+  if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
+  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
+  return null;
 }
 
 function baseUrl(): string {
@@ -34,14 +37,14 @@ async function payload(id: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const id = accountId(req);
+  const id = await accountId(req);
   if (!id) return NextResponse.json({ affiliate: null, floor: AFFILIATE_FLOOR });
   return NextResponse.json(await payload(id));
 }
 
 export async function POST(req: NextRequest) {
-  const id = accountId(req);
-  if (!id) return NextResponse.json({ error: "Sign up for a page first to become an affiliate." }, { status: 401 });
+  const id = await accountId(req);
+  if (!id) return NextResponse.json({ error: "Please sign in." }, { status: 401 });
   let body: any = {};
   try { body = await req.json(); } catch { /* empty */ }
 

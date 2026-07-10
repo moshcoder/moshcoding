@@ -179,10 +179,12 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [bgRgba, setBgRgba] = useState("");
   const [text, setText] = useState<Record<string, string>>({ brand: "", headline: "", tagline: "", sub: "" });
   const [wallet, setWallet] = useState("");
+  const [domain, setDomain] = useState("");
   const [saving, setSaving] = useState(false);
 
   const hydrate = (a: AccountView) => {
     const c = a.config || {};
+    setDomain(a.domain || "");
     setSocials(c.socials || {});
     setLinks(c.customLinks || []);
     setSponsors(c.sponsors || []);
@@ -209,6 +211,7 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       const res = await fetch("/api/account", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          domain: domain.trim(),
           payoutWallet: wallet.trim(),
           config: {
             socials,
@@ -245,10 +248,11 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         </p>
       )}
 
-      <ul className="list">
-        <li><span>Domain</span><span className="muted">{acct.domain || "—"}</span></li>
-        <li><span>Public page</span><span className="muted">{acct.pageUrl ? <a href={acct.pageUrl} target="_blank" rel="noopener noreferrer">{acct.pageUrl} ↗</a> : "—"}</span></li>
-      </ul>
+      <h3 className="ed-h">Domain</h3>
+      <div className="row">
+        <input className="inp" placeholder="your-domain.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
+        {acct.pageUrl && <a className="btn2 ghost" href={acct.pageUrl} target="_blank" rel="noopener noreferrer">View ↗</a>}
+      </div>
 
       <h3 className="ed-h">Copy <span className="muted">(optional — defaults are auto-generated)</span></h3>
       <div className="row"><input className="inp" placeholder="Brand name" value={text.brand} onChange={(e) => setText({ ...text, brand: e.target.value })} /></div>

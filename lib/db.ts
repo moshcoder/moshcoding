@@ -391,6 +391,37 @@ export async function getAccountByEmail(
   return { ...rowToAccount(r), password_hash: String(r.password_hash), password_salt: String(r.password_salt) };
 }
 
+/**
+ * Resolves the tenant account for a signed-in user, creating a passwordless one
+ * on first access. Lets CoinPay-OAuth users (who have no native password) use the
+ * dashboard editor and affiliate program without a separate signup.
+ */
+export async function findOrCreateAccountByEmail(email: string): Promise<Account> {
+  await ensureSchema();
+  const e = email.trim().toLowerCase();
+  const existing = await getAccountByEmail(e);
+  if (existing) return existing;
+  const res = await db().execute({
+    // "oauth" sentinel hash never matches scrypt-hex, so password login stays disabled.
+    sql: `INSERT INTO accounts (email, password_hash, password_salt, config)
+          VALUES (?, 'oauth', ?, '{}')
+          ON CONFLICT (email) DO UPDATE SET email = excluded.email
+          RETURNING *`,
+    args: [e, randomBytes(16).toString("hex")],
+  });
+  return rowToAccount(res.rows[0]);
+}
+
+/** Sets the tenant domain (used when a CoinPay user claims a page from the dashboard). */
+export async function setAccountDomain(id: string, domain: string): Promise<Account | null> {
+  await ensureSchema();
+  const res = await db().execute({
+    sql: `UPDATE accounts SET domain = ? WHERE id = ? RETURNING *`,
+    args: [domain, id],
+  });
+  return res.rows[0] ? rowToAccount(res.rows[0]) : null;
+}
+
 export async function getAccountById(id: string): Promise<Account | null> {
   await ensureSchema();
   const res = await db().execute({ sql: `SELECT * FROM accounts WHERE id = ?`, args: [id] });

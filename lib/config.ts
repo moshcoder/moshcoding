@@ -188,6 +188,11 @@ export type TenantOverrides = {
   bgRgba?: string | null;
   /** ?stream= playlist/stream URL (Spotify/YouTube/SoundCloud/…). */
   stream?: string | null;
+  /** ?brand= / ?headline= / ?tagline= / ?sub= copy overrides. */
+  brand?: string | null;
+  headline?: string | null;
+  tagline?: string | null;
+  sub?: string | null;
   /** Override loaded from the DB tenants table for a provisioned (paid) domain. */
   tenantOverride?: Record<string, any> | null;
 };
@@ -318,9 +323,18 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     : [];
   const hashtags = parsedTags.length ? parsedTags : (savedTags.length ? savedTags : (slug ? [slug] : []));
 
+  // ?brand=&headline=&tagline=&sub= copy overrides win over file/DB/defaults.
+  const cleanText = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 160) : undefined);
+  const queryText: Record<string, string> = {};
+  for (const k of ["brand", "headline", "tagline", "sub"] as const) {
+    const t = cleanText((opts as any)[k]);
+    if (t) queryText[k] = t;
+  }
+
   return {
     ...base,
     ...override,
+    ...queryText,
     dn,
     hashtag: override.hashtag || (sh ? `#${sh}` : `#${slug}`),
     links,

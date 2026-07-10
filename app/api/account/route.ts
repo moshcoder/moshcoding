@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { getAccountById, updateAccountProfile, updateAccountConfig } from "@/lib/db";
-import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags } from "@/lib/config";
+import { getAccountById, updateAccountProfile, updateAccountConfig, findOrCreateAccountByEmail, setAccountDomain } from "@/lib/db";
+import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain } from "@/lib/config";
 import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
 
@@ -11,11 +11,14 @@ export const dynamic = "force-dynamic";
 const PLATFORMS = ["x", "bluesky", "instagram", "tiktok", "github", "youtube"];
 const TEXT_FIELDS = ["brand", "headline", "tagline", "sub"] as const;
 
-function accountId(req: NextRequest): string | null {
+/** Resolves the tenant account for the session: native (acct:) or CoinPay (by email). */
+async function resolveAccountId(req: NextRequest): Promise<string | null> {
   if (!authConfigured()) return null;
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
-  if (!s?.sub?.startsWith("acct:")) return null;
-  return s.sub.slice("acct:".length);
+  if (!s) return null;
+  if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
+  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
+  return null;
 }
 
 function cleanWallet(v: unknown): string | null {
@@ -86,17 +89,24 @@ function view(acct: any) {
 }
 
 export async function GET(req: NextRequest) {
-  const id = accountId(req);
+  const id = await resolveAccountId(req);
   if (!id) return NextResponse.json({ account: null });
   const acct = await getAccountById(id);
   return NextResponse.json({ account: acct ? view(acct) : null });
 }
 
 export async function POST(req: NextRequest) {
-  const id = accountId(req);
+  const id = await resolveAccountId(req);
   if (!id) return NextResponse.json({ error: "not signed in" }, { status: 401 });
   let body: any = {};
   try { body = await req.json(); } catch { /* empty */ }
+
+  // Claim/change the domain (e.g. a CoinPay user setting up their page).
+  if (typeof body?.domain === "string" && body.domain.trim()) {
+    const dn = safeDomain(body.domain);
+    if (!dn) return NextResponse.json({ error: "Enter a valid domain name." }, { status: 400 });
+    await setAccountDomain(id, dn);
+  }
 
   // Payout wallet is edited on its own; only touch it when provided.
   if (body?.payoutWallet !== undefined || body?.payoutChain !== undefined) {
