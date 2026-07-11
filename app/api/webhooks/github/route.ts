@@ -12,11 +12,18 @@ export const dynamic = "force-dynamic";
 // X-Hub-Signature-256 HMAC GitHub sends.
 function verifySignature(rawBody: string, header: string | null): boolean {
   const secret = process.env.GITHUB_WEBHOOK_SECRET || "";
-  if (!secret) return true; // not yet configured — accept (dev)
+  if (!secret) {
+    // No secret configured — only allow unauthenticated pings in development.
+    // In production a missing secret would let anyone post forged events; reject.
+    return process.env.NODE_ENV !== "production";
+  }
   if (!header) return false;
+  // Strictly require the `sha256=` prefix (prevents header confusion/truncation attacks).
+  if (!header.startsWith("sha256=")) return false;
   const expected = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(header), b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 function notifyTo(): string {
