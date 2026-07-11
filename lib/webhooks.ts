@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { db, activeDomainWebhooks } from "./db";
+import { isInternalUrl } from "./url-guard";
 
 const TOLERANCE = 300; // seconds
 
@@ -33,25 +34,7 @@ export function newSecret(prefix = "whsec_") {
   return prefix + crypto.randomBytes(24).toString("base64url");
 }
 
-/* ---- SSRF guard: never POST to internal/loopback/link-local addresses ---- */
-export function isInternalUrl(raw: string): boolean {
-  let u: URL;
-  try { u = new URL(raw); } catch { return true; }
-  if (u.protocol !== "https:" && u.protocol !== "http:") return true;
-  if (process.env.NODE_ENV === "production" && u.protocol !== "https:") return true;
-  const h = u.hostname.toLowerCase();
-  if (h === "localhost" || h.endsWith(".localhost") || h === "metadata.google.internal") return true;
-  if (h === "0.0.0.0" || h === "::1" || h === "[::1]") return true;
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    if (a === 127 || a === 10 || a === 0) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-  }
-  return false;
-}
+export { isInternalUrl };
 
 /* ---- per-domain outbound delivery (best-effort, no owner server needed) ---- */
 /**
