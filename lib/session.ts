@@ -26,9 +26,14 @@ export function signSession(payload: { sub: string; email: string | null; name: 
   return `${body}.${sig}`;
 }
 
-/** Cookie options for the session cookie — secure only when served over https. */
+/** Cookie options for the session cookie — secure only when served over https.
+ *  Detects TLS proxies (Vercel/Cloudflare/Railway) via x-forwarded-proto and honors NODE_ENV=production. */
 export function sessionCookieOptions() {
-  const secure = (process.env.APP_BASE_URL || "").startsWith("https://");
+  const proto = (process.env.X_FORWARDED_PROTO || process.env.FORWARDED_PROTO || "").split(",")[0].trim().toLowerCase();
+  const secure =
+    (process.env.NODE_ENV === "production") ||
+    (process.env.APP_BASE_URL || "").startsWith("https://") ||
+    proto === "https";
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: SESSION_TTL };
 }
 
