@@ -119,13 +119,21 @@ async function recordDelivery(
   endpointId: string, type: string, body: string, idem: string,
   status: string, attempts: number, responseStatus: number | null, err: string | null
 ) {
+  // Schedule next retry for failed deliveries using exponential backoff (5m, 30m, 2h, 12h).
+  // Without this column set, the retry queue has no anchor to know when to re-attempt.
+  const backoffMinutes = [5, 30, 120, 720];
+  const nextAttempt = status === "delivered" || status === "dead_letter"
+    ? null
+    : new Date(Date.now() + (backoffMinutes[Math.min(attempts - 1, backoffMinutes.length - 1)] || 5) * 60_000)
+        .toISOString().replace("T", " ").slice(0, 19);
   await db().execute({
     sql: `INSERT INTO webhook_deliveries
-            (endpoint_id, event_type, payload, idempotency_key, status, attempts, response_status, last_error, delivered_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?='delivered' THEN datetime('now') END)
+            (endpoint_id, event_type, payload, idempotency_key, status, attempts, response_status, last_error, delivered_at, next_attempt_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?='delivered' THEN datetime('now') END, ?)
           ON CONFLICT (endpoint_id, idempotency_key) DO UPDATE SET
             status=excluded.status, attempts=webhook_deliveries.attempts+1,
-            response_status=excluded.response_status, last_error=excluded.last_error`,
-    args: [endpointId, type, body, idem, status, attempts, responseStatus, err, status],
+            response_status=excluded.response_status, last_error=excluded.last_error,
+            next_attempt_at=excluded.next_attempt_at`,
+    args: [endpointId, type, body, idem, status, attempts, responseStatus, err, status, nextAttempt],
   });
 }
