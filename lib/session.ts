@@ -28,12 +28,34 @@ export function signSession(payload: { sub: string; email: string | null; name: 
 
 /** Cookie options for the session cookie — secure only when served over https.
  *  Detects TLS proxies (Vercel/Cloudflare/Railway) via x-forwarded-proto and honors NODE_ENV=production. */
-export function sessionCookieOptions() {
-  const proto = (process.env.X_FORWARDED_PROTO || process.env.FORWARDED_PROTO || "").split(",")[0].trim().toLowerCase();
-  const secure =
-    (process.env.NODE_ENV === "production") ||
-    (process.env.APP_BASE_URL || "").startsWith("https://") ||
-    proto === "https";
+type CookieRequest = {
+  headers?: Headers;
+  nextUrl?: URL;
+  url?: string;
+};
+
+function requestIsHttps(req?: CookieRequest): boolean {
+  const proto = (
+    req?.headers?.get("x-forwarded-proto") ||
+    process.env.X_FORWARDED_PROTO ||
+    process.env.FORWARDED_PROTO ||
+    ""
+  ).split(",")[0].trim().toLowerCase();
+  if (proto === "https") return true;
+  if (proto === "http") return false;
+  if (req?.nextUrl?.protocol === "https:") return true;
+  if (req?.url) {
+    try {
+      return new URL(req.url).protocol === "https:";
+    } catch {
+      // Fall back to deployment env below.
+    }
+  }
+  return (process.env.NODE_ENV === "production") || (process.env.APP_BASE_URL || "").startsWith("https://");
+}
+
+export function sessionCookieOptions(req?: CookieRequest) {
+  const secure = requestIsHttps(req);
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: SESSION_TTL };
 }
 

@@ -23,6 +23,6 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true, status: account.status, plan: account.plan });
-  res.cookies.set(SESSION_COOKIE, signSession({ sub: `acct:${account.id}`, email: account.email, name: null }), sessionCookieOptions());
+  res.cookies.set(SESSION_COOKIE, signSession({ sub: `acct:${account.id}`, email: account.email, name: null }), sessionCookieOptions(req));
   return res;
 }
