@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   // Log the new account in immediately (as a pending account) so the dashboard
   // can show payment status.
   const setCookie = (res: NextResponse) => {
-    res.cookies.set(SESSION_COOKIE, signSession({ sub: `acct:${account.id}`, email, name: null }), sessionCookieOptions());
+    res.cookies.set(SESSION_COOKIE, signSession({ sub: `acct:${account.id}`, email, name: null }), sessionCookieOptions(req));
     return res;
   };
 
