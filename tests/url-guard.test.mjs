@@ -11,6 +11,13 @@ test("SSRF guard blocks private IPv6 webhook targets", () => {
   assert.equal(isInternalUrl("http://[::ffff:192.168.1.10]/hook"), true);
 });
 
+test("SSRF guard blocks internal IPv4 special-use ranges", () => {
+  assert.equal(isInternalUrl("http://100.64.0.1/hook"), true);
+  assert.equal(isInternalUrl("http://100.127.255.254/hook"), true);
+  assert.equal(isInternalUrl("http://198.18.0.1/hook"), true);
+  assert.equal(isInternalUrl("http://198.19.255.254/hook"), true);
+});
+
 test("SSRF guard allows public IPv6 webhook targets", () => {
   assert.equal(isInternalUrl("https://[2606:4700:4700::1111]/hook"), false);
   assert.equal(isInternalUrl("https://[::ffff:8.8.8.8]/hook"), false);

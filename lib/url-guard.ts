@@ -45,7 +45,9 @@ export function isInternalUrl(raw: string): boolean {
     if (a === 127 || a === 10 || a === 0) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
     if (a === 169 && b === 254) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
   }
   return false;
 }
