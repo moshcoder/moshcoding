@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyWebhook, isPaidStatus } from "@/lib/coinpay";
+import { verifyCoinPayWebhook } from "@profullstack/stack/coinpay";
+import { isPaidStatus } from "@/lib/coinpay";
 import { activateAccount } from "@/lib/db";
 import { provisionTenant } from "@/lib/provision";
 
@@ -11,8 +12,12 @@ export const dynamic = "force-dynamic";
 // account to active and provision its tenant page. Idempotent.
 export async function POST(req: NextRequest) {
   const raw = await req.text();
-  const sig = req.headers.get("x-coinpay-signature");
-  if (!verifyWebhook(raw, sig)) {
+  const ok = verifyCoinPayWebhook({
+    signature: req.headers.get("x-coinpay-signature"),
+    rawBody: raw,
+    secret: process.env.COINPAY_WEBHOOK_SECRET || "",
+  });
+  if (!ok) {
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }
 
