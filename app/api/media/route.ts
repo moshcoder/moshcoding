@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { resolveAccountId, bad, unauthorized } from "@/lib/api";
 import { accountOwnsDomain, addMedia, listMedia, type Media } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
-import { writeMedia, generateThumbnail, hasThumb, ALLOWED_TYPES, MAX_UPLOAD_BYTES } from "@/lib/media";
+import { writeMedia, generateThumbnail, hasThumb, ALLOWED_TYPES, MAX_UPLOAD_BYTES, mediaTypeForUpload } from "@/lib/media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,9 +47,9 @@ export async function POST(req: NextRequest) {
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0) return bad("file required");
 
-  const type = file.type || "video/mp4";
+  const type = mediaTypeForUpload(file.name, file.type);
+  if (!type) return bad("Only mp4, webm or mov videos are allowed.");
   const ext = ALLOWED_TYPES[type];
-  if (!ext) return bad("Only mp4, webm or mov videos are allowed.");
   if (file.size > MAX_UPLOAD_BYTES) {
     return bad(`File too large (max ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))} MB).`);
   }
