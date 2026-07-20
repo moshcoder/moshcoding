@@ -931,8 +931,14 @@ export async function accountForResetToken(token: string): Promise<string | null
   if (!token) return null;
   await ensureSchema();
   const res = await db().execute({
-    sql: `SELECT id FROM accounts WHERE reset_token = ? AND reset_expires > datetime('now')`,
-    args: [token],
+    // reset_expires is stored as an ISO-8601 string (Date#toISOString, e.g.
+    // "2026-07-20T20:53:43.696Z"); compare it against an ISO "now" so the check
+    // is a like-for-like lexical comparison. Comparing against SQLite's
+    // datetime('now') ("2026-07-20 21:23:43") instead makes the "T" separator
+    // (0x54) always sort after the space (0x20), so an expired token would read
+    // as still valid for the rest of the UTC day.
+    sql: `SELECT id FROM accounts WHERE reset_token = ? AND reset_expires > ?`,
+    args: [token, new Date().toISOString()],
   });
   return res.rows[0] ? String(res.rows[0].id) : null;
 }
