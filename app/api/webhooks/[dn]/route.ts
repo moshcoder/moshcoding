@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { safeDomain } from "@/lib/config";
 import { isKnownDomain, recordInboundEvent } from "@/lib/db";
+import { normalizeInboundEventType } from "@/lib/webhook-events";
 import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
@@ -27,7 +28,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ dn: string
   // Best-effort event-type extraction from JSON payloads.
   let eventType: string | null = null;
   if (ctype.includes("json")) {
-    try { const j = JSON.parse(bodyText); eventType = (j?.type || j?.event || j?.event_type) ?? null; } catch { /* not json */ }
+    try {
+      const j = JSON.parse(bodyText);
+      eventType = normalizeInboundEventType(j?.type ?? j?.event ?? j?.event_type);
+    } catch { /* not json */ }
   }
 
   await recordInboundEvent({ dn, source, eventType, payload: bodyText });
