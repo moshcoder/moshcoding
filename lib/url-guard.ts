@@ -10,10 +10,12 @@ export function isInternalUrl(raw: string): boolean {
 
   const h = u.hostname.toLowerCase();
   if (h === "localhost" || h.endsWith(".localhost") || h === "metadata.google.internal") return true;
-  if (h === "0.0.0.0" || h === "::" || h === "::1") return true;
+  if (h === "0.0.0.0") return true;
 
   const ipv6 = h.replace(/^\[|\]$/g, "");
   if (ipv6.includes(":")) {
+    if (ipv6 === "::" || ipv6 === "::1") return true;
+
     // IPv4-mapped, IPv4-compatible, 6to4, NAT64, ISATAP — anything ending in a
     // dotted-decimal IPv4 goes through the same private-range check.
     const embedded = ipv6.match(/([0-9a-f.:]*:|^)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
