@@ -4,6 +4,7 @@ import test from "node:test";
 import { isInternalUrl } from "../lib/url-guard.ts";
 
 test("SSRF guard blocks private IPv6 webhook targets", () => {
+  assert.equal(isInternalUrl("http://[::]/hook"), true);
   assert.equal(isInternalUrl("http://[::1]/hook"), true);
   assert.equal(isInternalUrl("http://[fe80::1]/hook"), true);
   assert.equal(isInternalUrl("http://[fc00::1]/hook"), true);
