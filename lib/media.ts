@@ -19,6 +19,12 @@ export const ALLOWED_TYPES: Record<string, string> = {
   "video/quicktime": ".mov",
 };
 
+export function isMp4Upload(name: string | undefined | null, type: string | undefined | null): boolean {
+  const hasMp4Name = /\.mp4$/i.test(String(name || ""));
+  const mime = String(type || "").trim().toLowerCase();
+  return mime === "video/mp4" || ((mime === "" || mime === "application/octet-stream") && hasMp4Name);
+}
+
 function ensureDir(): void {
   fs.mkdirSync(MEDIA_DIR, { recursive: true });
 }

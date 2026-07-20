@@ -4,7 +4,7 @@ import path from "node:path";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import { findOrCreateAccountByEmail, ownsParkedDomain, getTenantConfig, upsertTenant } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
-import { ffmpegPoster } from "@/lib/media";
+import { ffmpegPoster, isMp4Upload } from "@/lib/media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +36,7 @@ export async function POST(req: NextRequest) {
   try { form = await req.formData(); } catch { return NextResponse.json({ error: "Bad upload." }, { status: 400 }); }
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "No file." }, { status: 400 });
-  const isMp4 = /\.mp4$/i.test(file.name) || /video\/mp4|application\/octet-stream/.test(file.type);
-  if (!isMp4) return NextResponse.json({ error: "MP4 files only." }, { status: 400 });
+  if (!isMp4Upload(file.name, file.type)) return NextResponse.json({ error: "MP4 files only." }, { status: 400 });
   if (file.size > MAX_BYTES) return NextResponse.json({ error: "Too big — 100 MB max." }, { status: 413 });
 
   const dir = path.join(VIDEO_DIR, domSlug(dn));
