@@ -20,3 +20,13 @@ test("media upload type rejects empty or generic non-video names", () => {
   assert.equal(mediaTypeForUpload("payload", "application/octet-stream"), null);
   assert.equal(mediaTypeForUpload("clip.gif", "application/octet-stream"), null);
 });
+
+test("media upload type ignores inherited Object.prototype keys as MIME types", () => {
+  // A crafted Content-Type must not resolve through the prototype chain and
+  // slip a non-video file past the allow-list.
+  assert.equal(mediaTypeForUpload("evil.html", "constructor"), null);
+  assert.equal(mediaTypeForUpload("evil.html", "__proto__"), null);
+  assert.equal(mediaTypeForUpload("evil.exe", "hasOwnProperty"), null);
+  // An explicit non-allowed type is rejected outright, even with a video name.
+  assert.equal(mediaTypeForUpload("clip.mp4", "constructor"), null);
+});
