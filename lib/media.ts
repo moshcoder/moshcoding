@@ -25,7 +25,10 @@ const ALLOWED_EXT_TYPES: Record<string, string> = Object.fromEntries(
 
 export function mediaTypeForUpload(name: string | undefined | null, type: string | undefined | null): string | null {
   const mime = String(type || "").trim().toLowerCase();
-  if (ALLOWED_TYPES[mime]) return mime;
+  // Use hasOwn, not a truthy bracket lookup: `ALLOWED_TYPES["constructor"]` /
+  // `["__proto__"]` resolve to inherited Object.prototype members and are truthy,
+  // which would let a crafted Content-Type slip any file past the video allow-list.
+  if (Object.hasOwn(ALLOWED_TYPES, mime)) return mime;
   if (mime && mime !== "application/octet-stream") return null;
 
   const lowerName = String(name || "").toLowerCase();
