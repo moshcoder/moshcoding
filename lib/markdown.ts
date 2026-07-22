@@ -12,7 +12,9 @@ const escapeHtml = (s: string): string =>
 function safeUrl(raw: string): string | null {
   const u = raw.trim();
   if (/^(https?:|mailto:)/i.test(u)) return u;
-  if (/^\/(?!\/)/.test(u)) return u; // "/path" but not "//host"
+  // "/path", but not "//host" or "/\host": browsers normalise the backslash to a
+  // slash, so href="/\evil.com" resolves to "//evil.com" (an off-site redirect).
+  if (/^\/(?![/\\])/.test(u)) return u;
   if (/^#/.test(u)) return u;
   return null;
 }
