@@ -20,6 +20,9 @@ test("dollarsToCents rejects partial or non-decimal strings", () => {
 
 test("dollarsToCents handles numeric values without accepting non-finite numbers", () => {
   assert.equal(dollarsToCents(2.5), 250);
+  assert.equal(dollarsToCents(1.23), 123);
+  assert.equal(dollarsToCents(1.234), null);
+  assert.equal(dollarsToCents(0.004), null);
   assert.equal(dollarsToCents(Number.NaN), null);
   assert.equal(dollarsToCents(Number.POSITIVE_INFINITY), null);
 });

@@ -4,7 +4,7 @@ export function dollarsToCents(value: unknown): number | null {
   if (value === "" || value == null) return null;
   if (typeof value === "number") {
     if (!Number.isFinite(value) || value <= 0) return null;
-    return Math.round(value * 100);
+    return dollarsToCents(String(value));
   }
 
   const text = String(value).trim().replace(/\s+/g, "");
@@ -12,5 +12,6 @@ export function dollarsToCents(value: unknown): number | null {
 
   const amount = Number(text.replace(/[$,]/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  return Math.round(amount * 100);
+  const cents = Math.round(amount * 100);
+  return cents > 0 ? cents : null;
 }
