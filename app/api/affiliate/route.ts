@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import { getAffiliate, enrollAffiliate, setAffiliateCommission, listReferrals, AFFILIATE_FLOOR, findOrCreateAccountByEmail } from "@/lib/db";
+import { parseCommissionPercent } from "@/lib/affiliate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +55,9 @@ export async function POST(req: NextRequest) {
     if (aff.plan !== "paid") {
       return NextResponse.json({ error: `Free plan is floored at ${AFFILIATE_FLOOR}%. Upgrade to $1/mo to lower it.` }, { status: 403 });
     }
-    await setAffiliateCommission(id, Number(body.commission_pct));
+    const pct = parseCommissionPercent(body.commission_pct);
+    if (pct == null) return NextResponse.json({ error: "Enter a valid commission percentage." }, { status: 400 });
+    await setAffiliateCommission(id, pct);
   } else {
     // Default action: enroll (idempotent).
     await enrollAffiliate(id);
