@@ -20,3 +20,9 @@ test("media upload type rejects empty or generic non-video names", () => {
   assert.equal(mediaTypeForUpload("payload", "application/octet-stream"), null);
   assert.equal(mediaTypeForUpload("clip.gif", "application/octet-stream"), null);
 });
+
+test("media upload type rejects substring MIME matches", () => {
+  assert.equal(mediaTypeForUpload("payload.bin", "application/octet-stream-extra"), null);
+  assert.equal(mediaTypeForUpload("payload.bin", "text/video/mp4"), null);
+  assert.equal(mediaTypeForUpload("payload.bin", "application/json; video/mp4"), null);
+});
