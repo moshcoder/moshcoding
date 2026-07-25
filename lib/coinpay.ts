@@ -33,6 +33,21 @@ export function payUrl(id: string): string {
 
 export type CreatedPayment = { id: string; status: string; payUrl: string };
 
+const SETUP_AMOUNT_RE = /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
+
+export function setupAmountUsd(value: unknown = SETUP_FEE_USD): number {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) throw new Error("setup payment amount must be positive");
+    return Math.round(value * 100) / 100;
+  }
+
+  const text = String(value ?? "").trim().replace(/\s+/g, "");
+  if (!SETUP_AMOUNT_RE.test(text)) throw new Error("setup payment amount must be a positive dollar amount");
+  const amount = Number(text.replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("setup payment amount must be positive");
+  return amount;
+}
+
 export async function createSetupPayment(opts: {
   accountId: string;
   email: string;
@@ -44,7 +59,7 @@ export async function createSetupPayment(opts: {
   // module is imported even when CoinPay isn't configured (offline dev mode).
   const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER });
   const { paymentId, payment } = await coinpay.createCheckout({
-    amountUsd: Number(opts.amount || SETUP_FEE_USD),
+    amountUsd: setupAmountUsd(opts.amount || SETUP_FEE_USD),
     currency: PAY_CHAIN.toLowerCase(),
     paymentMethod: "crypto",
     description: `moshcoding account setup — ${opts.domain}`,
