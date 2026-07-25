@@ -8,7 +8,7 @@ export function isInternalUrl(raw: string): boolean {
   // Reject non-numeric ports; odd ports can hide alternate protocols.
   if (u.port !== "" && !/^\d{1,5}$/.test(u.port)) return true;
 
-  const h = u.hostname.toLowerCase();
+  const h = u.hostname.toLowerCase().replace(/\.+$/, "");
   if (h === "localhost" || h.endsWith(".localhost") || h === "metadata.google.internal") return true;
   if (h === "0.0.0.0") return true;
 
