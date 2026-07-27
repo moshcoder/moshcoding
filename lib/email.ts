@@ -6,6 +6,9 @@
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
+const escapeHtml = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 export function isEmailConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY);
 }
@@ -90,7 +93,7 @@ export function sendWaitlistVerification(opts: {
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:28px">
         <tr><td>
-          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${brand} 🤘</h1>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${escapeHtml(brand)} 🤘</h1>
           <p style="margin:0 0 20px;line-height:1.5;color:#c9c9c9">
             You're almost in. Confirm your email to lock in your spot in the pit.
           </p>
@@ -135,10 +138,10 @@ export function sendGithubClosedNotification(opts: {
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:24px">
         <tr><td>
-          <p style="margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#8a8a8a">${opts.repo}</p>
+          <p style="margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#8a8a8a">${escapeHtml(opts.repo)}</p>
           <h1 style="margin:0 0 12px;font-size:18px;color:#9EF01A">${opts.kind} #${opts.number} ${verb} 🤘</h1>
-          <p style="margin:0 0 16px;line-height:1.5;color:#d6d6d6">${opts.title}</p>
-          <p style="margin:0 0 18px;font-size:13px;color:#9a9a9a">by ${opts.actor}</p>
+          <p style="margin:0 0 16px;line-height:1.5;color:#d6d6d6">${escapeHtml(opts.title)}</p>
+          <p style="margin:0 0 18px;font-size:13px;color:#9a9a9a">by ${escapeHtml(opts.actor)}</p>
           <a href="${opts.url}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px">View on GitHub</a>
         </td></tr>
       </table>
@@ -167,7 +170,7 @@ export function sendPasswordReset(opts: {
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:28px">
         <tr><td>
-          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${brand} 🤘</h1>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${escapeHtml(brand)} 🤘</h1>
           <p style="margin:0 0 20px;line-height:1.5;color:#c9c9c9">
             Reset your password. This link expires in 1 hour.
           </p>
