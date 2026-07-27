@@ -12,7 +12,7 @@ const escapeHtml = (s: string): string =>
 function safeUrl(raw: string): string | null {
   const u = raw.trim();
   if (/^(https?:|mailto:)/i.test(u)) return u;
-  if (/^\/(?!\/)/.test(u)) return u; // "/path" but not "//host"
+  if (/^\/(?![/\\])/.test(u)) return u; // "/path" but not "//host" or "/\host"
   if (/^#/.test(u)) return u;
   return null;
 }
