@@ -133,6 +133,8 @@ export function safeDomain(dn: unknown): string | null {
     .replace(/^https?:\/\//, "")
     .replace(/[/?#&].*$/, "");
   if (!/^[a-z0-9.-]{3,253}$/.test(d) || !d.includes(".") || d.includes("..")) return null;
+  if (d.startsWith(".") || d.endsWith(".")) return null;
+  if (d.split(".").some((label) => label.startsWith("-") || label.endsWith("-"))) return null;
   return d;
 }
 
