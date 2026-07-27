@@ -25,7 +25,7 @@ const ALLOWED_EXT_TYPES: Record<string, string> = Object.fromEntries(
 
 export function mediaTypeForUpload(name: string | undefined | null, type: string | undefined | null): string | null {
   const mime = String(type || "").trim().toLowerCase();
-  if (ALLOWED_TYPES[mime]) return mime;
+  if (Object.hasOwn(ALLOWED_TYPES, mime)) return mime;
   if (mime && mime !== "application/octet-stream") return null;
 
   const lowerName = String(name || "").toLowerCase();
