@@ -61,6 +61,13 @@ WRAPPER="$MOSHCODE_BIN/moshcode"
 PKG_DIR="$MOSHCODE_HOME/pkg"
 REAL_BIN="$PKG_DIR/bin/moshcode.mjs"
 
+# PATH as inherited from the calling shell, captured before we mutate ours.
+# `curl … | sh` runs in a subshell, so our own exports never reach the caller —
+# this is the only honest way to tell whether THEIR shell will find the wrapper.
+MC_ORIG_PATH="${PATH:-}"
+SYSTEM_LINK_DIR=/usr/local/bin
+LINKED_BIN=''
+
 # ---------------------------------------------------------------------------
 # pretty output
 # ---------------------------------------------------------------------------
@@ -181,17 +188,51 @@ WRAPPER_EOF
     ok "wrapper installed at $WRAPPER"
 }
 
+# Wire $MOSHCODE_BIN into future shells. rc files are CREATED when missing —
+# a fresh VPS root account routinely has no ~/.zshrc, and the old
+# "skip if absent" behaviour silently wired up nothing at all.
 ensure_path() {
     case ":$PATH:" in *":$MOSHCODE_BIN:"*) ;; *) PATH="$MOSHCODE_BIN:$PATH"; export PATH ;; esac
-    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-        [ -f "$rc" ] || continue
-        grep -q '/.local/bin' "$rc" 2>/dev/null || \
-            printf '\n# Added by moshcode installer\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$rc"
+
+    _rcs="$HOME/.profile"
+    if [ -f "$HOME/.bash_profile" ]; then _rcs="$_rcs $HOME/.bash_profile"; fi
+    if command -v bash >/dev/null 2>&1; then _rcs="$_rcs $HOME/.bashrc"; fi
+    if command -v zsh  >/dev/null 2>&1; then _rcs="$_rcs $HOME/.zshrc"; fi
+
+    for rc in $_rcs; do
+        if [ -f "$rc" ]; then
+            if grep -q 'Added by moshcode installer' "$rc" 2>/dev/null; then continue; fi
+            # already wired by the distro skel, mise, etc. (ignore comments)
+            if grep -v '^[[:space:]]*#' "$rc" 2>/dev/null | grep -qF -- "$MOSHCODE_BIN"; then
+                continue
+            fi
+        elif ! : > "$rc" 2>/dev/null; then
+            warn "could not create $rc"
+            continue
+        fi
+        printf '\n# Added by moshcode installer\nexport PATH="%s:$PATH"\n' "$MOSHCODE_BIN" >> "$rc" \
+            2>/dev/null || warn "could not write $rc"
     done
+}
+
+# $MOSHCODE_BIN is only on the caller's PATH in a NEW shell. When it isn't on
+# the inherited one, also symlink into a system bin dir that is, so `moshcode`
+# works in the shell they just ran the installer from.
+link_system_bin() {
+    case ":$MC_ORIG_PATH:" in *":$MOSHCODE_BIN:"*) return 0 ;; esac
+    case ":$MC_ORIG_PATH:" in *":$SYSTEM_LINK_DIR:"*) ;; *) return 0 ;; esac
+    [ -d "$SYSTEM_LINK_DIR" ] && [ -w "$SYSTEM_LINK_DIR" ] || return 0
+    ln -sf "$WRAPPER" "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null || return 0
+    LINKED_BIN="$SYSTEM_LINK_DIR/moshcode"
+    ok "linked $LINKED_BIN -> $WRAPPER"
 }
 
 run_remove() {
     info "removing moshcode CLI"
+    if [ -L "$SYSTEM_LINK_DIR/moshcode" ] && \
+       [ "$(readlink "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null)" = "$WRAPPER" ]; then
+        rm -f "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null && ok "removed $SYSTEM_LINK_DIR/moshcode"
+    fi
     rm -f "$WRAPPER" 2>/dev/null || true
     rm -rf "$MOSHCODE_HOME" 2>/dev/null || true
     ok "removed $WRAPPER"
@@ -208,15 +249,26 @@ run_install() {
     install_cli
     write_wrapper
     ensure_path
+    link_system_bin
     printf '\n%sInstall complete.%s\n\n' "$GREEN" "$RESET"
+    # Test the CALLER's PATH, not ours — we already prepended $MOSHCODE_BIN to
+    # our own, so checking `command -v moshcode` here would always pass and the
+    # user would be told nothing while `moshcode` stayed "command not found".
+    case ":$MC_ORIG_PATH:" in
+        *":$MOSHCODE_BIN:"*) _ready=1 ;;
+        *) [ -n "$LINKED_BIN" ] && _ready=1 || _ready=0 ;;
+    esac
+    if [ "$_ready" = 0 ]; then
+        printf '%sOne more step — this shell does not have %s on its PATH yet.%s\n' "$YELLOW" "$MOSHCODE_BIN" "$RESET"
+        printf 'Run this now (added to your shell rc files for future shells):\n\n'
+        printf '  export PATH="%s:$PATH"\n\n' "$MOSHCODE_BIN"
+        printf 'Or start a fresh login shell:  exec "$SHELL" -l\n\n'
+    fi
     printf 'Use:\n'
     printf '  moshcode --help              # command list\n'
     printf '  moshcode engines             # list installable engines\n'
     printf '  moshcode install opencode    # install & drive an agent\n'
     printf '  moshcode update              # upgrade   moshcode remove   # uninstall\n\n'
-    if ! command -v moshcode >/dev/null 2>&1 || [ "$(command -v moshcode)" != "$WRAPPER" ]; then
-        printf '%sIf this shell isn'"'"'t picking up moshcode, run:%s\n  export PATH="%s:$PATH"\n\n' "$YELLOW" "$RESET" "$MOSHCODE_BIN"
-    fi
 }
 
 run_update() {
@@ -226,6 +278,7 @@ run_update() {
     install_cli
     write_wrapper
     ensure_path
+    link_system_bin
     printf '\n%sUpdate complete.%s\n\n' "$GREEN" "$RESET"
 }
 
