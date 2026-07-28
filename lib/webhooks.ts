@@ -1,31 +1,41 @@
 import crypto from "node:crypto";
 import { db, activeDomainWebhooks } from "./db";
-import { isInternalUrl } from "./url-guard";
+import { isInternalUrl, isSelfWebhookUrl } from "./url-guard";
+import { RELAY_HOP_HEADER } from "./webhook-events";
 export { newSecret, signWebhook, verifyWebhook } from "./webhook-signing";
 import { signWebhook } from "./webhook-signing";
 
-export { isInternalUrl };
+export { isInternalUrl, isSelfWebhookUrl };
 
 /* ---- per-domain outbound delivery (best-effort, no owner server needed) ---- */
 /**
  * Fires a parked-domain event to every active target URL for that domain,
  * Standard-Webhooks-signed with each target's secret. Best-effort and
  * SSRF-guarded; never throws (so it can't break the triggering request).
+ *
+ * `opts.hop` is the hop count of the event that triggered this fan-out; each
+ * delivery carries hop+1 so a receiver can tell how far an event has travelled.
  */
-export async function fireDomainEvent(dn: string, type: string, data: unknown): Promise<void> {
+export async function fireDomainEvent(dn: string, type: string, data: unknown, opts: { hop?: number } = {}): Promise<void> {
   let targets: { url: string; secret: string }[] = [];
   try { targets = await activeDomainWebhooks(dn); } catch { return; }
   if (!targets.length) return;
   const id = "evt_" + crypto.randomBytes(12).toString("hex");
   const ts = Math.floor(Date.now() / 1000);
+  const hop = (opts.hop ?? 0) + 1;
   const body = JSON.stringify({ id, type, dn, data, created_at: new Date().toISOString() });
   await Promise.allSettled(
     targets.map(async (t) => {
-      if (isInternalUrl(t.url)) return;
+      if (isInternalUrl(t.url) || isSelfWebhookUrl(t.url)) return;
       try {
         await fetch(t.url, {
           method: "POST",
-          headers: { "content-type": "application/json", ...signWebhook(id, ts, body, t.secret) },
+          headers: {
+            "content-type": "application/json",
+            "user-agent": "moshcoding-webhooks/1",
+            [RELAY_HOP_HEADER]: String(hop),
+            ...signWebhook(id, ts, body, t.secret),
+          },
           body,
           signal: AbortSignal.timeout(10_000),
         });
@@ -67,6 +77,10 @@ export async function deliverToEndpoint(
   if (isInternalUrl(url)) {
     await recordDelivery(endpointId, type, body, deliveryId, "dead_letter", 1, null, "blocked: internal url");
     return { ok: false, error: "internal url blocked" };
+  }
+  if (isSelfWebhookUrl(url)) {
+    await recordDelivery(endpointId, type, body, deliveryId, "dead_letter", 1, null, "blocked: self-referential url");
+    return { ok: false, error: "self-referential url blocked" };
   }
   const ts = Math.floor(Date.now() / 1000);
   const headers = {

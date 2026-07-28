@@ -1,3 +1,23 @@
+/* ---- self-target guard: never POST to our own inbound receivers ---- */
+/**
+ * True when a webhook target points back at one of our own inbound receivers.
+ * Delivering there re-enters the receiver, which records the event and relays it
+ * again — an endless self-feeding loop. Hosts we can't recognize as ours (a
+ * custom domain proxied to this app) are still bounded by the relay hop cap.
+ */
+export function isSelfWebhookUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (!/^\/api\/webhooks(\/|$)/.test(u.pathname)) return false;
+
+  const host = u.hostname.toLowerCase();
+  if (host === "moshcoding.com" || host.endsWith(".moshcoding.com")) return true;
+  try {
+    const self = new URL(process.env.APP_BASE_URL || "https://moshcoding.com").hostname.toLowerCase();
+    return host === self;
+  } catch { return false; }
+}
+
 /* ---- SSRF guard: never POST to internal/loopback/link-local addresses ---- */
 export function isInternalUrl(raw: string): boolean {
   let u: URL;
