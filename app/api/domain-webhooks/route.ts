@@ -10,7 +10,7 @@ import {
   listInboundEvents,
   distinctWebhookUrls,
 } from "@/lib/db";
-import { fireDomainEvent, newSecret, isInternalUrl } from "@/lib/webhooks";
+import { fireDomainEvent, newSecret, isInternalUrl, isSelfWebhookUrl } from "@/lib/webhooks";
 import { listAccessibleProjectIds } from "@/lib/authz";
 
 export const runtime = "nodejs";
@@ -86,6 +86,9 @@ export async function POST(req: NextRequest) {
   }
   if (isInternalUrl(url)) {
     return NextResponse.json({ error: "That URL points to an internal/loopback address." }, { status: 400 });
+  }
+  if (isSelfWebhookUrl(url)) {
+    return NextResponse.json({ error: "That's an inbound receiver URL — sending events there would loop back into this dashboard. Use the URL of your own server." }, { status: 400 });
   }
   const wh = await addDomainWebhook(dn, url, newSecret());
   return NextResponse.json({ ok: true, webhook: { id: wh.id, url: wh.url, secret: wh.secret, active: wh.active } }, { status: 201 });

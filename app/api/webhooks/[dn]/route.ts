@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { safeDomain } from "@/lib/config";
 import { isKnownDomain, recordInboundEvent } from "@/lib/db";
-import { normalizeInboundEventType } from "@/lib/webhook-events";
+import {
+  MAX_RELAY_HOPS,
+  RELAY_HOP_HEADER,
+  normalizeInboundEventType,
+  parseRelayHop,
+  relayEventType,
+} from "@/lib/webhook-events";
 import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
@@ -36,7 +42,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ dn: string
 
   await recordInboundEvent({ dn, source, eventType, payload: bodyText });
   // Fan-in → fan-out: relay the inbound event to the domain's outbound targets.
-  await fireDomainEvent(dn, `inbound.${eventType || "event"}`, { source, contentType: ctype, body: bodyText.slice(0, 4000) });
+  // Events we already relayed carry a hop counter; past the cap we record but
+  // stop re-broadcasting, so a target aimed back here can't feed itself forever.
+  const hop = parseRelayHop(req.headers.get(RELAY_HOP_HEADER));
+  if (hop < MAX_RELAY_HOPS) {
+    await fireDomainEvent(dn, relayEventType(eventType), { source, contentType: ctype, body: bodyText.slice(0, 4000) }, { hop });
+  }
 
   return NextResponse.json({ ok: true });
 }

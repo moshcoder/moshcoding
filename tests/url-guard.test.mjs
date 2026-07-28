@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isInternalUrl } from "../lib/url-guard.ts";
+import { isInternalUrl, isSelfWebhookUrl } from "../lib/url-guard.ts";
+
+test("self-target guard blocks our own inbound receivers", () => {
+  assert.equal(isSelfWebhookUrl("https://moshcoding.com/api/webhooks/example.com"), true);
+  assert.equal(isSelfWebhookUrl("https://www.moshcoding.com/api/webhooks/example.com"), true);
+  assert.equal(isSelfWebhookUrl("https://moshcoding.com/api/webhooks/inbound/abc123"), true);
+
+  assert.equal(isSelfWebhookUrl("https://example.com/api/webhooks/example.com"), false);
+  assert.equal(isSelfWebhookUrl("https://moshcoding.com/api/projects"), false);
+  assert.equal(isSelfWebhookUrl("https://notmoshcoding.com/api/webhooks/x"), false);
+  assert.equal(isSelfWebhookUrl("not a url"), false);
+});
 
 test("SSRF guard blocks private IPv6 webhook targets", () => {
   assert.equal(isInternalUrl("http://[::]/hook"), true);
