@@ -52,7 +52,7 @@ The internet namespace is artificially scarce and centrally controlled. `.com` d
 - R8 [P2] **Store Bypass Distribution**: A distribution mechanism for the browser extension and any associated apps that does not depend on Chrome Web Store or Apple App Store policies (sideloading, PWA, or self-updating installer).
 - R9 [P2] **Basic Reputation / Anti-Squatting**: A lightweight mechanism to discourage TLD squatting (e.g., use-it-or-lose-it renewal rules, or a small proof-of-use requirement).
 - R10 [P1] **Moshpit Hosting Bridge**: The namespace must integrate with the companion Moshpit hosting layer (see PRD `0002`) so that `scrambled.eggs` resolves not just to an IP, but to a sovereign, owner-controlled compute instance with `root@scrambled.eggs` access.
-- R11 [P0] **Clearnet Bootstrap**: `pit.moshcode.sh` serves as the clearnet entry point for users without the extension — a landing page that explains Moshpit, offers extension download, and allows TLD search/registration via standard HTTPS.
+- R11 [P0] **Clearnet Bootstrap**: `pit.moshcode.sh` serves as the clearnet entry point for users without the extension — a landing page that explains Moshpit, offers extension download, and allows TLD search/registration via standard HTTPS. The legacy-DNS resolution gateway and cross-network identity attestation are detailed in the companion PRD `0004` (Moshpit Bridge).
 
 ## UX Notes
 
