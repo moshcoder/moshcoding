@@ -38,7 +38,7 @@ const SETUP_AMOUNT_RE = /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
 export function setupAmountUsd(value: unknown = SETUP_FEE_USD): number {
   if (typeof value === "number") {
     if (!Number.isFinite(value) || value <= 0) throw new Error("setup payment amount must be positive");
-    return Math.round(value * 100) / 100;
+    return Math.floor(value * 100) / 100;
   }
 
   const text = String(value ?? "").trim().replace(/\s+/g, "");

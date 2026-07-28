@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const account = email ? await getAccountByEmail(email) : null;
   if (account) {
     const token = randomBytes(24).toString("base64url");
-    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
     await setResetToken(email, token, expires);
     const link = `${appBaseUrl()}/reset?token=${encodeURIComponent(token)}`;
     if (isEmailConfigured()) {
