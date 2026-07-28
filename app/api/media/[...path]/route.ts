@@ -3,6 +3,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { parseHttpByteRange } from "@/lib/http-range";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,12 +35,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path: strin
   const range = req.headers.get("range");
 
   if (range) {
-    const m = /bytes=(\d*)-(\d*)/.exec(range);
-    let start = m && m[1] ? parseInt(m[1], 10) : 0;
-    let end = m && m[2] ? parseInt(m[2], 10) : size - 1;
-    if (isNaN(start) || start < 0) start = 0;
-    if (isNaN(end) || end >= size) end = size - 1;
-    if (start > end) return new Response("range not satisfiable", { status: 416, headers: { "content-range": `bytes */${size}` } });
+    const parsed = parseHttpByteRange(range, size);
+    if (!parsed) return new Response("range not satisfiable", { status: 416, headers: { "content-range": `bytes */${size}` } });
+    const { start, end } = parsed;
     const nodeStream = fs.createReadStream(full, { start, end });
     return new Response(Readable.toWeb(nodeStream) as unknown as ReadableStream, {
       status: 206,

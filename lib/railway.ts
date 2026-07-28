@@ -42,15 +42,41 @@ export type DnsRecord = {
   status: string; // e.g. DNS_RECORD_STATUS_PROPAGATED
   zone: string;
 };
-export type CustomDomain = { id: string; domain: string; dnsRecords: DnsRecord[] };
+export type CustomDomain = {
+  id: string;
+  domain: string;
+  dnsRecords: DnsRecord[];
+  // Railway proves you own the domain via a TXT record BEFORE it issues a cert.
+  // A correct ALIAS/CNAME alone leaves the domain stuck "validating ownership".
+  verified: boolean;
+  verificationDnsHost: string; // e.g. "_railway-verify" (apex) or "_railway-verify.www"
+  verificationToken: string; // e.g. "railway-verify=<hex>" — the TXT value to set
+  certificateStatus: string; // e.g. CERTIFICATE_STATUS_TYPE_VALID
+};
+
+const DOMAIN_STATUS_FIELDS = `
+  status {
+    certificateStatus verified verificationDnsHost verificationToken
+    dnsRecords { hostlabel recordType requiredValue currentValue status zone }
+  }`;
+
+function toCustomDomain(c: any): CustomDomain {
+  const s = c?.status || {};
+  return {
+    id: c.id,
+    domain: c.domain,
+    dnsRecords: s.dnsRecords || [],
+    verified: Boolean(s.verified),
+    verificationDnsHost: s.verificationDnsHost || "",
+    verificationToken: s.verificationToken || "",
+    certificateStatus: s.certificateStatus || "",
+  };
+}
 
 const DOMAINS_QUERY = `
   query($pid: String!, $sid: String!, $eid: String!) {
     domains(projectId: $pid, serviceId: $sid, environmentId: $eid) {
-      customDomains {
-        id domain
-        status { dnsRecords { hostlabel recordType requiredValue currentValue status zone } }
-      }
+      customDomains { id domain ${DOMAIN_STATUS_FIELDS} }
       serviceDomains { domain }
     }
   }`;
@@ -58,30 +84,22 @@ const DOMAINS_QUERY = `
 /** All custom domains on the service, each with its live DNS-record status. */
 export async function listCustomDomains(): Promise<{ customDomains: CustomDomain[]; serviceDomain: string | null }> {
   const d = await gql(DOMAINS_QUERY, { pid: PROJECT_ID, sid: SERVICE_ID, eid: ENVIRONMENT_ID });
-  const cds: CustomDomain[] = (d?.domains?.customDomains || []).map((c: any) => ({
-    id: c.id,
-    domain: c.domain,
-    dnsRecords: c.status?.dnsRecords || [],
-  }));
+  const cds: CustomDomain[] = (d?.domains?.customDomains || []).map(toCustomDomain);
   const serviceDomain = d?.domains?.serviceDomains?.[0]?.domain || null;
   return { customDomains: cds, serviceDomain };
 }
 
 const CREATE_MUTATION = `
   mutation($input: CustomDomainCreateInput!) {
-    customDomainCreate(input: $input) {
-      id domain
-      status { dnsRecords { hostlabel recordType requiredValue currentValue status zone } }
-    }
+    customDomainCreate(input: $input) { id domain ${DOMAIN_STATUS_FIELDS} }
   }`;
 
-/** Adds one custom domain; returns it with the DNS record the user must set. */
+/** Adds one custom domain; returns it with the DNS records the user must set. */
 export async function createCustomDomain(domain: string): Promise<CustomDomain> {
   const d = await gql(CREATE_MUTATION, {
     input: { projectId: PROJECT_ID, serviceId: SERVICE_ID, environmentId: ENVIRONMENT_ID, domain },
   });
-  const c = d.customDomainCreate;
-  return { id: c.id, domain: c.domain, dnsRecords: c.status?.dnsRecords || [] };
+  return toCustomDomain(d.customDomainCreate);
 }
 
 export async function deleteCustomDomain(id: string): Promise<void> {

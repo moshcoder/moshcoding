@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { coinpayConfigured, signSession, SESSION_COOKIE, SESSION_TTL } from "@/lib/session";
+import { coinpayConfigured, signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 import { exchangeCode, fetchUserinfo, APP_BASE_URL } from "@/lib/oauth";
 import { upsertUser } from "@/lib/db";
 
@@ -29,10 +29,7 @@ export async function GET(req: NextRequest) {
     await upsertUser({ sub: info.sub, email: info.email, name: info.name });
 
     const res = NextResponse.redirect(`${APP_BASE_URL}/`);
-    const secure = APP_BASE_URL.startsWith("https://");
-    res.cookies.set(SESSION_COOKIE, signSession({ sub: info.sub, email: info.email ?? null, name: info.name ?? null }), {
-      httpOnly: true, sameSite: "lax", secure, path: "/", maxAge: SESSION_TTL,
-    });
+    res.cookies.set(SESSION_COOKIE, signSession({ sub: info.sub, email: info.email ?? null, name: info.name ?? null }), sessionCookieOptions(req));
     res.cookies.delete("cp_pkce");
     res.cookies.delete("cp_state");
     return res;

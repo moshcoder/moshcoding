@@ -1036,12 +1036,17 @@ export async function enrollAffiliate(accountId: string): Promise<Affiliate> {
 }
 
 /** Sets the commission %, enforcing the 80% floor for free-plan affiliates. */
+export function normalizeAffiliateCommission(pct: number, plan: "free" | "paid"): number {
+  let p = Number.isFinite(pct) ? Math.max(1, Math.min(100, Math.round(pct))) : AFFILIATE_FLOOR;
+  if (plan !== "paid" && p < AFFILIATE_FLOOR) p = AFFILIATE_FLOOR;
+  return p;
+}
+
 export async function setAffiliateCommission(accountId: string, pct: number): Promise<Affiliate | null> {
   await ensureSchema();
   const aff = await getAffiliate(accountId);
   if (!aff) return null;
-  let p = Math.max(1, Math.min(100, Math.round(pct)));
-  if (aff.plan !== "paid" && p < AFFILIATE_FLOOR) p = AFFILIATE_FLOOR;
+  const p = normalizeAffiliateCommission(pct, aff.plan);
   const res = await db().execute({
     sql: `UPDATE affiliates SET commission_pct = ? WHERE account_id = ? RETURNING *`,
     args: [p, accountId],

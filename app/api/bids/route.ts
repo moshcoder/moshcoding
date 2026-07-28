@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession, SESSION_COOKIE } from "@/lib/session";
 import { safeDomain } from "@/lib/config";
 import { addBid, getAuction, highBid } from "@/lib/db";
+import { dollarsToCents as parseDollarCents } from "@/lib/money";
 import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
@@ -11,9 +12,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Dollars string/number → integer cents, or null if not a positive amount. */
 function dollarsToCents(v: unknown): number | null {
-  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/[$,\s]/g, ""));
-  if (!isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100);
+  return parseDollarCents(v);
 }
 
 // GET /api/bids?dn= — public auction status (never leaks the reserve amount).

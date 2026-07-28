@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+
+// Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
+// bare /dashboard). Keep this in sync with the tab buttons below.
+const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns"] as const;
+type Tab = (typeof TABS)[number];
 
 type Org = { id: string; name: string };
 type Team = { id: string; name: string; org_id: string; org_name: string; role: string };
@@ -29,7 +35,20 @@ export default function Dashboard() {
   const [teamOrg, setTeamOrg] = useState("");
   const [projName, setProjName] = useState("");
   const [projTeam, setProjTeam] = useState("");
-  const [tab, setTab] = useState<"page" | "videos" | "waitlist" | "auctions" | "webhooks" | "affiliates" | "dns">("page");
+  // Seed the active tab from the URL slug so /dashboard/dns opens the DNS tab and
+  // every tab is directly bookmarkable.
+  const params = useParams();
+  const slug = Array.isArray(params?.tab) ? params.tab[0] : (params?.tab as string | undefined);
+  const [tab, setTabState] = useState<Tab>((TABS as readonly string[]).includes(slug || "") ? (slug as Tab) : "page");
+
+  // Switch tab and reflect it in the address bar (replaceState keeps in-page state
+  // and avoids a server round-trip; the bare /dashboard is the "page" tab).
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", t === "page" ? "/dashboard" : `/dashboard/${t}`);
+    }
+  };
 
   const say = (t: string, ok = true) => setMsg({ t, ok });
 
@@ -599,17 +618,52 @@ function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m
 function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
   const [data, setData] = useState<any>(undefined);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  // Remembers which domains were already live so the 15s poll only celebrates a
+  // fresh transition (avoids re-announcing "live" on every tick).
+  const liveRef = useRef<Set<string>>(new Set());
 
-  const load = async (announce?: string) => {
+  // Fetch domain status. `mode` decides the feedback:
+  //  - "manual": the user clicked Verify — always report the outcome + spin the button
+  //  - "auto":   background 15s poll — stay quiet unless a domain just went live
+  //  - "silent": initial load / after park/unpark — no verify chatter
+  const load = async (mode: "manual" | "auto" | "silent" = "silent") => {
+    if (mode === "manual") setChecking(true);
     try {
       const r = await fetch("/api/domains");
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed to load.");
+      const parked = (d.domains || []).filter((x: any) => x.registered);
+      const liveNow = new Set<string>(parked.filter((x: any) => x.live).map((x: any) => x.domain));
+      const newlyLive = [...liveNow].filter((dn) => !liveRef.current.has(dn));
+      liveRef.current = liveNow;
       setData(d);
-      if (announce) onOk(announce);
-    } catch (e: any) { onError(e.message || "Failed."); setData({ configured: true, domains: [] }); }
+      if (mode === "manual") {
+        if (parked.length === 0) onOk("No parked domains to verify yet — park one below first.");
+        else if (liveNow.size === parked.length) onOk("✓ DNS verified — your domain is live. 🤘");
+        else onOk("DNS records haven't propagated yet. We'll keep checking every 15s — no need to click again.");
+      } else if (mode === "auto" && newlyLive.length) {
+        onOk(`✓ ${newlyLive.join(", ")} is now live! 🤘`);
+      }
+    } catch (e: any) {
+      onError(e.message || "Failed.");
+      if (data === undefined) setData({ configured: true, domains: [] });
+    } finally {
+      if (mode === "manual") setChecking(false);
+    }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { load("silent"); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  // Auto-verify: while any parked domain is still pending, re-check every 15s
+  // until it goes live. Stops (and cleans up on unmount / leaving the page) once
+  // nothing is pending, so it never polls needlessly.
+  const pending = (data?.domains || []).some((x: any) => x.registered && !x.live);
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(() => { load("auto"); }, 15000);
+    return () => clearInterval(t);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [pending]);
 
   const park = async (domain: string) => {
     setBusy(true);
@@ -618,7 +672,7 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed.");
       (d.warnings || []).forEach((w: string) => onError(w));
-      onOk(`Set the two DNS records below at your registrar, then hit Verify.`);
+      onOk(`Set all the DNS records below at your registrar, then hit Verify.`);
       await load();
     } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
   };
@@ -644,9 +698,12 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     <section className="card2">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h2>Custom domain</h2>
-        <button className="btn2 ghost" disabled={busy} onClick={() => load("Rechecked DNS.")}>↻ Verify DNS</button>
+        <button className="btn2 ghost" disabled={busy || checking} onClick={() => load("manual")}>{checking ? "Checking…" : "↻ Verify DNS"}</button>
       </div>
-      <p className="sub">Point your own domain straight at moshcoding with two DNS records. Set them at your registrar (Porkbun, Namecheap, Cloudflare…), then hit <b>Verify DNS</b>. The TLS cert is issued automatically.</p>
+      <p className="sub">Point your own domain straight at moshcoding with the DNS records below — an ALIAS/CNAME to route traffic <b>and</b> a <code>_railway-verify</code> TXT record to prove you own it. Set <b>all</b> of them at your registrar (Porkbun, Namecheap, Cloudflare…), then hit <b>Verify DNS</b>. The TLS cert is issued automatically once ownership is verified.</p>
+      {pending && (
+        <p className="sub" style={{ opacity: 0.75 }}>⏳ Auto-checking your DNS every 15s — you can leave this page open and it&apos;ll go live on its own.</p>
+      )}
 
       {domains.length === 0 && (
         <p className="sub">You haven&apos;t claimed a domain yet — add one on the <b>Domains</b> tab first, then park it here.</p>
@@ -668,19 +725,22 @@ function DomainsPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
 
           {d.registered && (
             <>
-              <p className="sub" style={{ margin: "10px 0 6px" }}>Add these two records at your registrar:</p>
+              <p className="sub" style={{ margin: "10px 0 6px" }}>Add these records at your registrar (all of them — the TXT rows verify ownership):</p>
               <ul className="list">
                 {d.records.map((rec: any, i: number) => (
-                  <li key={i} style={{ alignItems: "center" }}>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}>
-                      <b>{rec.type}</b>{"  "}<span className="muted">host</span> {rec.host}{"  →  "}{rec.value}{" "}
+                  <li key={i} style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <b>{rec.type}</b>
+                      <span className="muted">host</span> {rec.host}
+                      <button className="btn2 ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => copyText(rec.host).then((ok) => onOk(ok ? "Copied host. 🤘" : "Copy failed — select it."))}>Copy</button>
+                      <span className="muted">value</span> {rec.value}
+                      <button className="btn2 ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => copyText(rec.value).then((ok) => onOk(ok ? "Copied value. 🤘" : "Copy failed — select it."))}>Copy</button>
                       <span style={{ opacity: 0.6 }}>({rec.status})</span>
                     </span>
-                    <button className="btn2 ghost" onClick={() => copyText(rec.value).then((ok) => onOk(ok ? "Copied. 🤘" : "Copy failed — select it."))}>Copy</button>
                   </li>
                 ))}
               </ul>
-              <p className="sub" style={{ marginTop: 4 }}>Apex uses <b>ALIAS</b> (a plain CNAME isn&apos;t allowed at the root); <b>www</b> uses <b>CNAME</b> and auto-redirects to the apex.</p>
+              <p className="sub" style={{ marginTop: 4 }}>Apex uses <b>ALIAS</b> (a plain CNAME isn&apos;t allowed at the root); <b>www</b> uses <b>CNAME</b> and auto-redirects to the apex. The <b>TXT</b> <code>_railway-verify</code> rows prove ownership — without them the cert never issues, so add them too.</p>
             </>
           )}
         </div>
@@ -1051,6 +1111,15 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
   const [provider, setProvider] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
 
+  const formatEvents = (raw: unknown) => {
+    try {
+      const events = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return Array.isArray(events) && events.length ? events.join(", ") : "all events";
+    } catch {
+      return "invalid event config";
+    }
+  };
+
   const load = useCallback(async () => {
     try {
       const [a, b] = await Promise.all([
@@ -1080,7 +1149,7 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
         <button className="btn2" disabled={!url.trim()} onClick={() => { post(`/api/projects/${project.id}/webhooks`, { url: url.trim() }, "Outbound"); setUrl(""); }}>Add outbound</button>
         <button className="btn2 ghost" onClick={() => post(`/api/projects/${project.id}/webhooks/test`, {}, "").then(() => onError("Test event dispatched."))}>Send test</button>
       </div>
-      <ul className="list">{out.map((e) => <li key={e.id}><span>↗ {e.url}</span><span className="muted">{JSON.parse(e.events).join(", ")}</span></li>)}
+      <ul className="list">{out.map((e) => <li key={e.id}><span>↗ {e.url}</span><span className="muted">{formatEvents(e.events)}</span></li>)}
         {out.length === 0 && <li className="muted">No outbound endpoints yet.</li>}</ul>
       <div className="row" style={{ marginTop: 14 }}>
         <input className="inp" placeholder="inbound provider (e.g. github)" value={provider} onChange={(e) => setProvider(e.target.value)} />

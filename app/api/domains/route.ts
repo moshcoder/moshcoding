@@ -22,8 +22,8 @@ async function ownedDomains(accountId: string): Promise<string[]> {
   return [...set];
 }
 
-/** Turn a raw Railway custom-domain record into the friendly UI shape. */
-function record(cd: CustomDomain | undefined, apex: boolean) {
+/** The routing record (ALIAS at the apex, CNAME on www) that points traffic here. */
+function routingRecord(cd: CustomDomain | undefined, apex: boolean) {
   const r = cd?.dnsRecords?.[0];
   return {
     host: apex ? "@" : "www",
@@ -33,6 +33,31 @@ function record(cd: CustomDomain | undefined, apex: boolean) {
     registered: Boolean(cd),
     propagated: r?.status === "DNS_RECORD_STATUS_PROPAGATED",
   };
+}
+
+/**
+ * The TXT record Railway uses to verify domain ownership. Without it the domain
+ * stays stuck "validating ownership" and never gets a TLS cert — a correct
+ * ALIAS/CNAME is NOT enough on its own.
+ */
+function verifyRecord(cd: CustomDomain | undefined, apex: boolean) {
+  if (!cd?.verificationToken) return null;
+  return {
+    host: cd.verificationDnsHost || (apex ? "_railway-verify" : "_railway-verify.www"),
+    type: "TXT",
+    value: cd.verificationToken,
+    status: cd.verified ? "verified" : "not added",
+    registered: Boolean(cd),
+    propagated: cd.verified,
+  };
+}
+
+/** A domain is truly live once Railway has issued its cert (ownership verified + DNS propagated). */
+function isLive(cd: CustomDomain | undefined): boolean {
+  if (!cd) return false;
+  if (cd.certificateStatus) return cd.certificateStatus === "CERTIFICATE_STATUS_TYPE_VALID";
+  const r = cd.dnsRecords?.[0];
+  return Boolean(cd.verified) && r?.status === "DNS_RECORD_STATUS_PROPAGATED";
 }
 
 // List the caller's own domains with their DNS records + live status.
@@ -47,13 +72,22 @@ export async function GET(req: NextRequest) {
   const byDomain = new Map(customDomains.map((c) => [c.domain, c]));
 
   const domains = owned.map((dn) => {
-    const apex = record(byDomain.get(dn), true);
-    const www = record(byDomain.get(`www.${dn}`), false);
+    const apexCd = byDomain.get(dn);
+    const wwwCd = byDomain.get(`www.${dn}`);
+    // Order the rows the way a user sets them: apex routing + its verify TXT,
+    // then www routing + its verify TXT. Verify rows are omitted once Railway
+    // stops handing out a token (i.e. nothing left to prove).
+    const records = [
+      routingRecord(apexCd, true),
+      verifyRecord(apexCd, true),
+      routingRecord(wwwCd, false),
+      verifyRecord(wwwCd, false),
+    ].filter(Boolean);
     return {
       domain: dn,
-      registered: apex.registered,
-      live: apex.propagated && www.propagated,
-      records: [apex, www],
+      registered: Boolean(apexCd),
+      live: isLive(apexCd) && isLive(wwwCd),
+      records,
     };
   });
   return NextResponse.json({ configured: true, domains });

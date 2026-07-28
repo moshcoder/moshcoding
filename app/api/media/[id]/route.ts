@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Readable } from "node:stream";
 import { resolveAccountId, bad, unauthorized } from "@/lib/api";
 import { accountOwnsDomain, getMedia, deleteMedia } from "@/lib/db";
+import { parseHttpByteRange } from "@/lib/http-range";
 import { mediaSize, mediaStream, deleteMediaFile, thumbFilename } from "@/lib/media";
 
 export const runtime = "nodejs";
@@ -23,17 +24,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   };
 
   const range = req.headers.get("range");
-  const m2 = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
-  if (m2) {
-    let start = m2[1] ? parseInt(m2[1], 10) : 0;
-    let end = m2[2] ? parseInt(m2[2], 10) : size - 1;
-    if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
+  if (range) {
+    const parsed = parseHttpByteRange(range, size);
+    if (!parsed) {
       return new NextResponse(null, {
         status: 416,
         headers: { "content-range": `bytes */${size}`, "accept-ranges": "bytes" },
       });
     }
-    end = Math.min(end, size - 1);
+    const { start, end } = parsed;
     const stream = Readable.toWeb(mediaStream(m.filename, start, end)) as ReadableStream;
     return new NextResponse(stream, {
       status: 206,

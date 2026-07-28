@@ -10,6 +10,7 @@ import {
   highBid,
   acceptBid,
 } from "@/lib/db";
+import { dollarsToCents as parseDollarCents } from "@/lib/money";
 import { fireDomainEvent } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
@@ -27,10 +28,7 @@ async function resolveAccountId(req: NextRequest): Promise<string | null> {
 
 /** Dollars → integer cents; "" / null / 0 → null (clears the field). */
 function dollarsToCents(v: unknown): number | null {
-  if (v === "" || v == null) return null;
-  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[$,\s]/g, ""));
-  if (!isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100);
+  return parseDollarCents(v);
 }
 
 // GET /api/auctions?dn= — public status; owner also gets reserve + the bid list.

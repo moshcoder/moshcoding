@@ -14,7 +14,8 @@
 # What it does:
 #   1. Detects OS (Linux/macOS — Windows users: use WSL).
 #   2. Installs mise (https://mise.jdx.dev) if missing, lives under $HOME.
-#   3. Installs Node.js 20 via mise if no system Node 18+ is present.
+#   3. Installs the current Node.js LTS + latest bun via mise. Both are
+#      resolved at run time, so re-running moves them up to newer releases.
 #   4. Fetches the CLI straight from the public GitHub repo
 #      (github.com/moshcoder/moshcode) into $MOSHCODE_HOME/pkg. moshcode
 #      is dependency-free pure ESM, so there is NO npm/registry step.
@@ -25,6 +26,8 @@
 #   MOSHCODE_HOME=/path     install dir     (default: $HOME/.moshcode)
 #   MOSHCODE_BIN=/path/dir  wrapper bin dir (default: $HOME/.local/bin)
 #   MOSHCODE_REF=ref        git ref         (default: main)
+#   MOSHCODE_USE_SYSTEM_NODE=1  keep an existing system Node 20+ instead of
+#                               installing the current LTS through mise
 #
 # Re-running this script updates an existing install in place.
 
@@ -61,6 +64,13 @@ WRAPPER="$MOSHCODE_BIN/moshcode"
 PKG_DIR="$MOSHCODE_HOME/pkg"
 REAL_BIN="$PKG_DIR/bin/moshcode.mjs"
 
+# PATH as inherited from the calling shell, captured before we mutate ours.
+# `curl … | sh` runs in a subshell, so our own exports never reach the caller —
+# this is the only honest way to tell whether THEIR shell will find the wrapper.
+MC_ORIG_PATH="${PATH:-}"
+SYSTEM_LINK_DIR=/usr/local/bin
+LINKED_BIN=''
+
 # ---------------------------------------------------------------------------
 # pretty output
 # ---------------------------------------------------------------------------
@@ -84,13 +94,9 @@ detect_os() {
 }
 
 # ---------------------------------------------------------------------------
-# mise + node (idempotent) — only if no system Node 18+.
+# mise (idempotent) — the toolchain manager we pin node/bun through.
 # ---------------------------------------------------------------------------
-ensure_node() {
-    if command -v node >/dev/null 2>&1; then
-        _major="$(node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1)"
-        if [ "${_major:-0}" -ge 18 ]; then ok "Node.js $(node -v) (system)"; return 0; fi
-    fi
+ensure_mise() {
     if ! command -v mise >/dev/null 2>&1; then
         command -v curl >/dev/null 2>&1 || fail "curl is required"
         info "installing mise (https://mise.jdx.dev)"
@@ -99,15 +105,48 @@ ensure_node() {
         [ -x "$HOME/.local/bin/mise" ] || fail "mise install failed"
         PATH="$HOME/.local/bin:$PATH"; export PATH
     fi
-    info "installing Node.js 20 via mise"
     MISE_YES=1; export MISE_YES
-    mise use --global node@20 >/dev/null 2>&1 || warn "mise node@20 had warnings"
+    _mise_data="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
+    MISE_SHIMS="$_mise_data/shims"
+    PATH="$HOME/.local/bin:$MISE_SHIMS:$PATH"; export PATH
     _cfg="$HOME/.config/mise/config.toml"
     [ -f "$_cfg" ] && mise trust "$_cfg" >/dev/null 2>&1 || true
-    _mise_data="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
-    PATH="$HOME/.local/bin:$_mise_data/shims:$PATH"; export PATH
+}
+
+# ---------------------------------------------------------------------------
+# node — always the CURRENT LTS, resolved by mise at run time. Deliberately
+# not a pinned major: a hardcoded node@20 silently rots as new LTS lines ship.
+# Re-running the installer (or `moshcode update`) re-resolves and moves up.
+# Set MOSHCODE_USE_SYSTEM_NODE=1 to keep an existing system Node 20+ instead.
+# ---------------------------------------------------------------------------
+ensure_node() {
+    if [ "${MOSHCODE_USE_SYSTEM_NODE:-0}" = "1" ] && command -v node >/dev/null 2>&1; then
+        _major="$(node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1)"
+        if [ "${_major:-0}" -ge 20 ]; then ok "Node.js $(node -v) (system, pinned by request)"; return 0; fi
+        warn "system Node $(node -v) is older than 20 — using mise LTS instead"
+    fi
+    ensure_mise
+    info "installing/refreshing Node.js LTS via mise"
+    mise use --global node@lts >/dev/null 2>&1 || warn "mise node@lts had warnings"
     command -v node >/dev/null 2>&1 || fail "node not on PATH after mise install"
-    ok "Node.js $(node -v) (via mise)"
+    ok "Node.js $(node -v) LTS (via mise)"
+}
+
+# ---------------------------------------------------------------------------
+# bun — always latest, resolved by mise at run time (same rationale as node).
+# NB: `bun upgrade` self-updates the binary and would fight mise's copy, so we
+# always go through mise. `bun update` is a project-dependency command and is
+# not what keeps bun itself current.
+# ---------------------------------------------------------------------------
+ensure_bun() {
+    ensure_mise
+    info "installing/refreshing bun (latest) via mise"
+    mise use --global bun@latest >/dev/null 2>&1 || warn "mise bun@latest had warnings"
+    if command -v bun >/dev/null 2>&1; then
+        ok "bun $(bun --version) (via mise)"
+    else
+        warn "bun not on PATH after mise install — continuing without it"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -181,17 +220,57 @@ WRAPPER_EOF
     ok "wrapper installed at $WRAPPER"
 }
 
+# Append one `export PATH="<dir>:$PATH"` line to an rc file, unless that dir is
+# already wired there (by us, the distro skel, mise, …). Checked per-line rather
+# than per-block so existing installs pick up newly-added dirs on re-run.
+_rc_add_path() {
+    if grep -qF "export PATH=\"$2:\$PATH\"" "$1" 2>/dev/null; then return 0; fi
+    if grep -v '^[[:space:]]*#' "$1" 2>/dev/null | grep -qF -- "$2"; then return 0; fi
+    printf '\n# Added by moshcode installer\nexport PATH="%s:$PATH"\n' "$2" >> "$1" \
+        2>/dev/null || warn "could not write $1"
+}
+
+# Wire $MOSHCODE_BIN into future shells. rc files are CREATED when missing —
+# a fresh VPS root account routinely has no ~/.zshrc, and the old
+# "skip if absent" behaviour silently wired up nothing at all.
 ensure_path() {
     case ":$PATH:" in *":$MOSHCODE_BIN:"*) ;; *) PATH="$MOSHCODE_BIN:$PATH"; export PATH ;; esac
-    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-        [ -f "$rc" ] || continue
-        grep -q '/.local/bin' "$rc" 2>/dev/null || \
-            printf '\n# Added by moshcode installer\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$rc"
+
+    _rcs="$HOME/.profile"
+    if [ -f "$HOME/.bash_profile" ]; then _rcs="$_rcs $HOME/.bash_profile"; fi
+    if command -v bash >/dev/null 2>&1; then _rcs="$_rcs $HOME/.bashrc"; fi
+    if command -v zsh  >/dev/null 2>&1; then _rcs="$_rcs $HOME/.zshrc"; fi
+
+    for rc in $_rcs; do
+        if [ ! -f "$rc" ] && ! : > "$rc" 2>/dev/null; then
+            warn "could not create $rc"
+            continue
+        fi
+        _rc_add_path "$rc" "$MOSHCODE_BIN"
+        # mise's shims, so the node/bun we just installed — and anything
+        # `moshcode install` puts under them — are usable in a plain shell.
+        if [ -n "${MISE_SHIMS:-}" ]; then _rc_add_path "$rc" "$MISE_SHIMS"; fi
     done
+}
+
+# $MOSHCODE_BIN is only on the caller's PATH in a NEW shell. When it isn't on
+# the inherited one, also symlink into a system bin dir that is, so `moshcode`
+# works in the shell they just ran the installer from.
+link_system_bin() {
+    case ":$MC_ORIG_PATH:" in *":$MOSHCODE_BIN:"*) return 0 ;; esac
+    case ":$MC_ORIG_PATH:" in *":$SYSTEM_LINK_DIR:"*) ;; *) return 0 ;; esac
+    [ -d "$SYSTEM_LINK_DIR" ] && [ -w "$SYSTEM_LINK_DIR" ] || return 0
+    ln -sf "$WRAPPER" "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null || return 0
+    LINKED_BIN="$SYSTEM_LINK_DIR/moshcode"
+    ok "linked $LINKED_BIN -> $WRAPPER"
 }
 
 run_remove() {
     info "removing moshcode CLI"
+    if [ -L "$SYSTEM_LINK_DIR/moshcode" ] && \
+       [ "$(readlink "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null)" = "$WRAPPER" ]; then
+        rm -f "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null && ok "removed $SYSTEM_LINK_DIR/moshcode"
+    fi
     rm -f "$WRAPPER" 2>/dev/null || true
     rm -rf "$MOSHCODE_HOME" 2>/dev/null || true
     ok "removed $WRAPPER"
@@ -205,27 +284,41 @@ run_install() {
     detect_os; ok "OS: $OS"
     mkdir -p "$MOSHCODE_HOME" "$MOSHCODE_BIN"
     ensure_node
+    ensure_bun
     install_cli
     write_wrapper
     ensure_path
+    link_system_bin
     printf '\n%sInstall complete.%s\n\n' "$GREEN" "$RESET"
+    # Test the CALLER's PATH, not ours — we already prepended $MOSHCODE_BIN to
+    # our own, so checking `command -v moshcode` here would always pass and the
+    # user would be told nothing while `moshcode` stayed "command not found".
+    case ":$MC_ORIG_PATH:" in
+        *":$MOSHCODE_BIN:"*) _ready=1 ;;
+        *) [ -n "$LINKED_BIN" ] && _ready=1 || _ready=0 ;;
+    esac
+    if [ "$_ready" = 0 ]; then
+        printf '%sOne more step — this shell does not have %s on its PATH yet.%s\n' "$YELLOW" "$MOSHCODE_BIN" "$RESET"
+        printf 'Run this now (added to your shell rc files for future shells):\n\n'
+        printf '  export PATH="%s:$PATH"\n\n' "$MOSHCODE_BIN"
+        printf 'Or start a fresh login shell:  exec "$SHELL" -l\n\n'
+    fi
     printf 'Use:\n'
     printf '  moshcode --help              # command list\n'
     printf '  moshcode engines             # list installable engines\n'
     printf '  moshcode install opencode    # install & drive an agent\n'
     printf '  moshcode update              # upgrade   moshcode remove   # uninstall\n\n'
-    if ! command -v moshcode >/dev/null 2>&1 || [ "$(command -v moshcode)" != "$WRAPPER" ]; then
-        printf '%sIf this shell isn'"'"'t picking up moshcode, run:%s\n  export PATH="%s:$PATH"\n\n' "$YELLOW" "$RESET" "$MOSHCODE_BIN"
-    fi
 }
 
 run_update() {
     detect_os
     info "checking for updates"
     ensure_node
+    ensure_bun
     install_cli
     write_wrapper
     ensure_path
+    link_system_bin
     printf '\n%sUpdate complete.%s\n\n' "$GREEN" "$RESET"
 }
 

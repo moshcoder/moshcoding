@@ -43,13 +43,17 @@ export async function generateMetadata({
     sub: sp.sub, socials: sp.socials, fallback: sp.fallback,
   });
   const q = new URLSearchParams({ dn, brand: cfg.brand, headline: cfg.headline, tagline: cfg.tagline });
-  const og = `/api/og?${q.toString()}`;
+  const generatedOg = `/api/og?${q.toString()}`;
+  // Prefer a real image discovered from the tenant's connected GitHub repo; fall
+  // back to the branded, generated card when the tenant has no repo image.
+  const discovered = cfg.assets.find((a) => a.kind === "image" && /^https:\/\//i.test(a.url))?.url;
+  const ogImage = discovered ? { url: discovered } : { url: generatedOg, width: 1200, height: 630 };
   const title = `${cfg.brand} ${cfg.headline}`.trim();
   return {
     title,
     description: cfg.tagline,
-    openGraph: { title, description: cfg.tagline, url: `https://${dn}`, images: [{ url: og, width: 1200, height: 630 }] },
-    twitter: { card: "summary_large_image", title, description: cfg.tagline, images: [og] },
+    openGraph: { title, description: cfg.tagline, url: `https://${dn}`, images: [ogImage] },
+    twitter: { card: "summary_large_image", title, description: cfg.tagline, images: [ogImage.url] },
   };
 }
 
