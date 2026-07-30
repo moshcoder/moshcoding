@@ -6,6 +6,21 @@
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
+/**
+ * Escape text before interpolating it into an HTML email body. Titles, brand
+ * names and actors can come from external/untrusted sources (e.g. a GitHub
+ * issue title), so raw interpolation would let them inject markup into the
+ * rendered email. Plain-text bodies don't need this.
+ */
+function escapeHtml(value: string | number): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function isEmailConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY);
 }
@@ -84,23 +99,25 @@ export function sendWaitlistVerification(opts: {
     `You're almost in. Confirm your email to lock in your spot on the ${brand} waitlist:\n\n` +
     `${url}\n\n` +
     `If you didn't request this, just ignore it — no account is created.`;
+  const safeBrand = escapeHtml(brand);
+  const safeUrl = escapeHtml(url);
   const html = `<!doctype html>
 <html><body style="margin:0;background:#0b0b0c;color:#e7e7e7;font-family:ui-monospace,Menlo,Consolas,monospace">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:28px">
         <tr><td>
-          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${brand} 🤘</h1>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${safeBrand} 🤘</h1>
           <p style="margin:0 0 20px;line-height:1.5;color:#c9c9c9">
             You're almost in. Confirm your email to lock in your spot in the pit.
           </p>
           <p style="margin:0 0 24px">
-            <a href="${url}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">
+            <a href="${safeUrl}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">
               Confirm my spot
             </a>
           </p>
           <p style="margin:0;font-size:12px;color:#8a8a8a;line-height:1.5;word-break:break-all">
-            Or paste this link:<br>${url}
+            Or paste this link:<br>${safeUrl}
           </p>
           <p style="margin:18px 0 0;font-size:12px;color:#6a6a6a">
             Didn't sign up? Ignore this — nothing happens.
@@ -129,17 +146,21 @@ export function sendGithubClosedNotification(opts: {
   const text =
     `${opts.actor} ${verb} ${opts.kind} #${opts.number} in ${opts.repo}\n\n` +
     `${opts.title}\n${opts.url}\n`;
+  const safeRepo = escapeHtml(opts.repo);
+  const safeTitle = escapeHtml(opts.title);
+  const safeActor = escapeHtml(opts.actor);
+  const safeUrl = escapeHtml(opts.url);
   const html = `<!doctype html>
 <html><body style="margin:0;background:#0b0b0c;color:#e7e7e7;font-family:ui-monospace,Menlo,Consolas,monospace">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 16px">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:24px">
         <tr><td>
-          <p style="margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#8a8a8a">${opts.repo}</p>
+          <p style="margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#8a8a8a">${safeRepo}</p>
           <h1 style="margin:0 0 12px;font-size:18px;color:#9EF01A">${opts.kind} #${opts.number} ${verb} 🤘</h1>
-          <p style="margin:0 0 16px;line-height:1.5;color:#d6d6d6">${opts.title}</p>
-          <p style="margin:0 0 18px;font-size:13px;color:#9a9a9a">by ${opts.actor}</p>
-          <a href="${opts.url}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px">View on GitHub</a>
+          <p style="margin:0 0 16px;line-height:1.5;color:#d6d6d6">${safeTitle}</p>
+          <p style="margin:0 0 18px;font-size:13px;color:#9a9a9a">by ${safeActor}</p>
+          <a href="${safeUrl}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px">View on GitHub</a>
         </td></tr>
       </table>
     </td></tr>
@@ -161,23 +182,25 @@ export function sendPasswordReset(opts: {
     `Someone asked to reset the password for your ${brand} account.\n\n` +
     `Set a new one here (link expires in 1 hour):\n${url}\n\n` +
     `If this wasn't you, ignore this email — your password stays unchanged.`;
+  const safeBrand = escapeHtml(brand);
+  const safeUrl = escapeHtml(url);
   const html = `<!doctype html>
 <html><body style="margin:0;background:#0b0b0c;color:#e7e7e7;font-family:ui-monospace,Menlo,Consolas,monospace">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:28px">
         <tr><td>
-          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${brand} 🤘</h1>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">${safeBrand} 🤘</h1>
           <p style="margin:0 0 20px;line-height:1.5;color:#c9c9c9">
             Reset your password. This link expires in 1 hour.
           </p>
           <p style="margin:0 0 24px">
-            <a href="${url}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">
+            <a href="${safeUrl}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">
               Set a new password
             </a>
           </p>
           <p style="margin:0;font-size:12px;color:#8a8a8a;line-height:1.5;word-break:break-all">
-            Or paste this link:<br>${url}
+            Or paste this link:<br>${safeUrl}
           </p>
           <p style="margin:18px 0 0;font-size:12px;color:#6a6a6a">
             Didn't ask for this? Ignore it — nothing changes.
