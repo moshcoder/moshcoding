@@ -231,6 +231,38 @@ async function initSchema(): Promise<void> {
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_parked_account ON parked_domains (account_id)`);
 
+  // ---- Moshpit TLDs: the .anything namespace (see docs/prd/0001-moshpit-namespace.md).
+  //
+  // Ownership is first-come-first-served, and the row is not the authority —
+  // `moshpit_tld_log` is. Allocation order is what decides a contested name, so
+  // it is recorded in an append-only log that can be published and audited.
+  // That is what lets the directory be mirrored by anyone without letting a
+  // mirror forge or seize a name: records are ordered here, verified anywhere.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS moshpit_tlds (
+      id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      tld         TEXT NOT NULL UNIQUE,
+      account_id  TEXT NOT NULL,
+      owner_email TEXT,
+      owner_key   TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_moshpit_tld_account ON moshpit_tlds (account_id)`);
+
+  // Append-only. No UPDATE or DELETE is ever issued against this table: "who
+  // claimed .eggs first" has to stay answerable after the fact, including when
+  // the answer is inconvenient.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS moshpit_tld_log (
+      seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+      tld        TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      action     TEXT NOT NULL,
+      at         TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   // ---- domain auctions: one per domain, runs FOREVER (no expiry) — the owner
   // collects bids until they accept one. Owner sets an optional reserve (hidden
   // from bidders) and buy-now (a bid >= buy_now auto-wins). Managed on /dashboard.
