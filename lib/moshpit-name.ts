@@ -50,3 +50,22 @@ export function tldRejection(tld: string): string | null {
   if (tld.length < 2) return "a TLD needs at least 2 characters";
   return null;
 }
+
+/**
+ * Split "foo.agentic" into its label and TLD.
+ *
+ * Only one dot is allowed: the namespace is one level deep, so "a.b.c" is not
+ * a deeper name, it is a malformed one, and guessing which part was meant
+ * would resolve someone to a place they never asked for.
+ */
+export function parseMoshpitName(input: unknown): { label: string; tld: string } | null {
+  const raw = String(input ?? "").trim().toLowerCase().replace(/^\.+/, "").replace(/\.+$/, "");
+  if (!raw) return null;
+  const parts = raw.split(".");
+  if (parts.length !== 2) return null;
+  const [label, tld] = parts;
+  // Both halves are hostname labels, and normalizeTld already encodes exactly
+  // that rule — so reuse it rather than keeping a second copy that can drift.
+  if (!normalizeTld(label) || !normalizeTld(tld)) return null;
+  return { label, tld };
+}
