@@ -54,7 +54,12 @@ export async function POST(req: NextRequest) {
     if (aff.plan !== "paid") {
       return NextResponse.json({ error: `Free plan is floored at ${AFFILIATE_FLOOR}%. Upgrade to $1/mo to lower it.` }, { status: 403 });
     }
-    await setAffiliateCommission(id, Number(body.commission_pct));
+    const raw = body.commission_pct;
+    const pct = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+    if (!Number.isFinite(pct) || pct < 1 || pct > 100) {
+      return NextResponse.json({ error: "commission_pct must be a number between 1 and 100." }, { status: 400 });
+    }
+    await setAffiliateCommission(id, pct);
   } else {
     // Default action: enroll (idempotent).
     await enrollAffiliate(id);
