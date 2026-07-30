@@ -34,6 +34,6 @@ export async function POST(req: NextRequest) {
   // 409 rather than 400 when the name is gone: the request was well formed,
   // someone else simply got there first, and a client should be able to tell
   // those apart without parsing the message.
-  if (!result.ok) return bad(result.error, result.taken ? 409 : 400);
+  if (!result.ok) return bad(result.error || "could not register that TLD", result.taken ? 409 : 400);
   return NextResponse.json({ tld: result.tld }, { status: 201 });
 }
