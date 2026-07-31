@@ -449,3 +449,33 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
 .t-stream:hover { transform: translateY(-1px); filter: brightness(1.08); }
 .t-streams { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 auto 16px; }
 .t-streams .t-stream { margin: 0; }
+
+/* ---- /pit — the Moshpit namespace bootstrap (PRD 0001 R11) ---- */
+.pit-lede { max-width: 62ch; color: var(--bone); line-height: 1.6; margin: 0 0 18px; }
+.pit-dim { color: var(--ash); font-size: .92rem; }
+.pit-lede code, .pit-steps code { font-family: var(--mono); color: var(--acid); }
+
+.pit-search { margin-top: 22px; }
+.pit-search form { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.pit-field {
+  display: flex; align-items: center; gap: 2px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 0 14px; min-width: 260px; flex: 1 1 260px;
+}
+.pit-dot { font-family: var(--mono); color: var(--acid); font-size: 1.2rem; }
+.pit-field input {
+  flex: 1; background: transparent; border: 0; outline: 0;
+  color: var(--ink); font-family: var(--mono); font-size: 1.2rem; padding: 14px 0;
+}
+.pit-result { min-height: 2.6rem; margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.pit-yes { color: var(--acid); margin: 0; }
+.pit-no { color: var(--ash); margin: 0; }
+
+.pit-how { max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 0; }
+.pit-steps { margin: 0; padding-left: 20px; color: var(--bone); line-height: 1.7; max-width: 62ch; }
+.pit-steps strong { color: var(--ink); }
+.pit-list { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; padding: 0; margin: 0 0 18px; }
+.pit-list li {
+  font-family: var(--mono); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+}

@@ -50,9 +50,19 @@ export async function listTldsForAccount(accountId: string): Promise<MoshpitTld[
   return r.rows as unknown as MoshpitTld[];
 }
 
-export type RegisterResult =
-  | { ok: true; tld: MoshpitTld }
-  | { ok: false; error: string; taken?: boolean };
+/**
+ * Flat rather than a discriminated union: this project compiles with
+ * `strict: false`, and without strictNullChecks TypeScript will not narrow a
+ * union on a boolean discriminant — so `if (!result.ok) result.error` fails to
+ * compile. A flat shape works either way.
+ */
+export type RegisterResult = {
+  ok: boolean;
+  tld?: MoshpitTld;
+  error?: string;
+  /** True only when the name was lost to another claim, so callers can 409. */
+  taken?: boolean;
+};
 
 /**
  * Claim a TLD. First writer wins.
