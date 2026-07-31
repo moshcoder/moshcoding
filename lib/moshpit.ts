@@ -10,21 +10,23 @@
 // checkable rather than trusted.
 
 import { db, ensureSchema } from "./db";
-import { normalizeTld, tldRejection } from "./moshpit-name";
+import { normalizeTld, parseMoshpitName, tldRejection } from "./moshpit-name";
 
-export { RESERVED_TLDS, normalizeTld, tldRejection } from "./moshpit-name";
+export { RESERVED_TLDS, normalizeTld, parseMoshpitName, tldRejection } from "./moshpit-name";
 
 export type MoshpitTld = {
   tld: string;
   account_id: string;
   owner_email: string | null;
+  /** The TLD this one points at, or null when it stands on its own. */
+  alias_of: string | null;
   created_at: string;
 };
 
 export async function getTld(tld: string): Promise<MoshpitTld | null> {
   await ensureSchema();
   const r = await db().execute({
-    sql: `SELECT tld, account_id, owner_email, created_at FROM moshpit_tlds WHERE tld = ?`,
+    sql: `SELECT tld, account_id, owner_email, alias_of, created_at FROM moshpit_tlds WHERE tld = ?`,
     args: [tld],
   });
   return (r.rows[0] as unknown as MoshpitTld) ?? null;
@@ -33,7 +35,7 @@ export async function getTld(tld: string): Promise<MoshpitTld | null> {
 export async function listTlds(limit = 200): Promise<MoshpitTld[]> {
   await ensureSchema();
   const r = await db().execute({
-    sql: `SELECT tld, account_id, owner_email, created_at FROM moshpit_tlds
+    sql: `SELECT tld, account_id, owner_email, alias_of, created_at FROM moshpit_tlds
           ORDER BY created_at DESC LIMIT ?`,
     args: [limit],
   });
@@ -43,7 +45,7 @@ export async function listTlds(limit = 200): Promise<MoshpitTld[]> {
 export async function listTldsForAccount(accountId: string): Promise<MoshpitTld[]> {
   await ensureSchema();
   const r = await db().execute({
-    sql: `SELECT tld, account_id, owner_email, created_at FROM moshpit_tlds
+    sql: `SELECT tld, account_id, owner_email, alias_of, created_at FROM moshpit_tlds
           WHERE account_id = ? ORDER BY created_at DESC`,
     args: [accountId],
   });
@@ -121,4 +123,197 @@ export async function tldLog(limit = 500) {
     args: [limit],
   });
   return r.rows;
+}
+
+
+export type AliasResult = { ok: boolean; error?: string };
+
+/**
+ * Point one TLD at another: `.agentic` -> `.agent`, so `foo.agentic` resolves
+ * to `foo.agent`.
+ *
+ * Both must be held by the same account. Aliasing a name you do not own would
+ * turn this into a land-grab — claim `.agent`, then absorb forty related words
+ * without registering any of them — and first-come-first-served would stop
+ * meaning anything.
+ *
+ * Chains are rejected rather than followed. A TLD is either a target or an
+ * alias, never both, which makes resolution a single hop and makes a cycle
+ * impossible to construct in the first place, instead of something to detect
+ * at read time forever after.
+ */
+export async function setAlias(opts: {
+  from: string;
+  to: string;
+  accountId: string;
+}): Promise<AliasResult> {
+  await ensureSchema();
+  const from = normalizeTld(opts.from);
+  const to = normalizeTld(opts.to);
+  if (!from || !to) return { ok: false, error: "not a valid TLD" };
+  if (from === to) return { ok: false, error: "a TLD cannot point at itself" };
+
+  const [source, target] = await Promise.all([getTld(from), getTld(to)]);
+  if (!source) return { ok: false, error: `.${from} is not registered` };
+  if (!target) return { ok: false, error: `.${to} is not registered` };
+  if (source.account_id !== opts.accountId) return { ok: false, error: `you do not own .${from}` };
+  if (target.account_id !== opts.accountId) return { ok: false, error: `you do not own .${to}` };
+  if (target.alias_of) {
+    return { ok: false, error: `.${to} already points at .${target.alias_of} — point at the destination instead` };
+  }
+
+  const pointedHere = await db().execute({
+    sql: `SELECT tld FROM moshpit_tlds WHERE alias_of = ? LIMIT 1`,
+    args: [from],
+  });
+  if (pointedHere.rows.length) {
+    return {
+      ok: false,
+      error: `.${pointedHere.rows[0].tld} already points at .${from}, so it cannot point elsewhere itself`,
+    };
+  }
+
+  await db().execute({ sql: `UPDATE moshpit_tlds SET alias_of = ? WHERE tld = ?`, args: [to, from] });
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_log (tld, account_id, action) VALUES (?,?,?)`,
+    args: [from, opts.accountId, `alias:${to}`],
+  });
+  return { ok: true };
+}
+
+/** Stop pointing `.from` anywhere. */
+export async function clearAlias(from: string, accountId: string): Promise<AliasResult> {
+  await ensureSchema();
+  const tld = normalizeTld(from);
+  if (!tld) return { ok: false, error: "not a valid TLD" };
+  const existing = await getTld(tld);
+  if (!existing) return { ok: false, error: `.${tld} is not registered` };
+  if (existing.account_id !== accountId) return { ok: false, error: `you do not own .${tld}` };
+
+  await db().execute({ sql: `UPDATE moshpit_tlds SET alias_of = NULL WHERE tld = ?`, args: [tld] });
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_log (tld, account_id, action) VALUES (?,?,'unalias')`,
+    args: [tld, accountId],
+  });
+  return { ok: true };
+}
+
+export type Resolution = {
+  name: string;
+  /** Where it actually points — the same name when nothing is aliased. */
+  resolved: string;
+  aliased: boolean;
+  registered: boolean;
+  /** Held back from its TLD's alias by the operator. */
+  exempt?: boolean;
+};
+
+/**
+ * Resolve `foo.agentic` to `foo.agent`.
+ *
+ * The label is carried across rather than dropped: an alias redirects the
+ * namespace, not the name. `.agentic` pointing at `.agent` means every name
+ * under it keeps its own identity on the other side.
+ */
+export async function resolveMoshpitName(input: string): Promise<Resolution | null> {
+  await ensureSchema();
+  const parsed = parseMoshpitName(input);
+  if (!parsed) return null;
+  const { label, tld } = parsed;
+  const owner = await getTld(tld);
+  if (!owner) return { name: `${label}.${tld}`, resolved: `${label}.${tld}`, aliased: false, registered: false };
+  if (!owner.alias_of) {
+    return { name: `${label}.${tld}`, resolved: `${label}.${tld}`, aliased: false, registered: true };
+  }
+
+  // An exempt name outranks the alias. Checked here rather than at write time
+  // because the exemption has to survive the alias being repointed later.
+  if (await isExempt(tld, label)) {
+    return { name: `${label}.${tld}`, resolved: `${label}.${tld}`, aliased: false, registered: true, exempt: true };
+  }
+
+  return {
+    name: `${label}.${tld}`,
+    resolved: `${label}.${owner.alias_of}`,
+    aliased: true,
+    registered: true,
+  };
+}
+
+
+/** Is this name held back from its TLD's alias? */
+export async function isExempt(tld: string, label: string): Promise<boolean> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `SELECT 1 FROM moshpit_alias_exempt WHERE tld = ? AND label = ? LIMIT 1`,
+    args: [tld, label],
+  });
+  return r.rows.length > 0;
+}
+
+export async function listExempt(tld: string): Promise<string[]> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `SELECT label FROM moshpit_alias_exempt WHERE tld = ? ORDER BY label`,
+    args: [tld],
+  });
+  return r.rows.map((row) => String(row.label));
+}
+
+/**
+ * Hold `label.tld` back from `.tld`'s alias, so it keeps resolving to itself.
+ *
+ * Allowed even when no alias is set yet: an operator should be able to carve
+ * out the names they intend to keep BEFORE pointing the TLD somewhere, rather
+ * than having to redirect everyone first and repair it afterwards.
+ */
+export async function setExempt(opts: {
+  tld: string;
+  label: string;
+  accountId: string;
+}): Promise<AliasResult> {
+  await ensureSchema();
+  const tld = normalizeTld(opts.tld);
+  const label = normalizeTld(opts.label);
+  if (!tld || !label) return { ok: false, error: "not a valid name" };
+
+  const owner = await getTld(tld);
+  if (!owner) return { ok: false, error: `.${tld} is not registered` };
+  if (owner.account_id !== opts.accountId) return { ok: false, error: `you do not own .${tld}` };
+
+  await db().execute({
+    sql: `INSERT OR IGNORE INTO moshpit_alias_exempt (tld, label, account_id) VALUES (?,?,?)`,
+    args: [tld, label, opts.accountId],
+  });
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_log (tld, account_id, action) VALUES (?,?,?)`,
+    args: [tld, opts.accountId, `exempt:${label}`],
+  });
+  return { ok: true };
+}
+
+/** Let `label.tld` follow the alias again. */
+export async function clearExempt(opts: {
+  tld: string;
+  label: string;
+  accountId: string;
+}): Promise<AliasResult> {
+  await ensureSchema();
+  const tld = normalizeTld(opts.tld);
+  const label = normalizeTld(opts.label);
+  if (!tld || !label) return { ok: false, error: "not a valid name" };
+
+  const owner = await getTld(tld);
+  if (!owner) return { ok: false, error: `.${tld} is not registered` };
+  if (owner.account_id !== opts.accountId) return { ok: false, error: `you do not own .${tld}` };
+
+  await db().execute({
+    sql: `DELETE FROM moshpit_alias_exempt WHERE tld = ? AND label = ?`,
+    args: [tld, label],
+  });
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_log (tld, account_id, action) VALUES (?,?,?)`,
+    args: [tld, opts.accountId, `unexempt:${label}`],
+  });
+  return { ok: true };
 }

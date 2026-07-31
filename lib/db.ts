@@ -250,6 +250,30 @@ async function initSchema(): Promise<void> {
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_moshpit_tld_account ON moshpit_tlds (account_id)`);
 
+  // A TLD may point at another one the same owner holds: .agentic -> .agent,
+  // so foo.agentic resolves to foo.agent. Added separately because the table
+  // predates it and SQLite has no "ADD COLUMN IF NOT EXISTS".
+  try {
+    await d.execute(`ALTER TABLE moshpit_tlds ADD COLUMN alias_of TEXT`);
+  } catch {
+    /* already there — the only reason this fails on a healthy database */
+  }
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_moshpit_tld_alias ON moshpit_tlds (alias_of)`);
+
+  // Names held back from their TLD's alias: .financewizards -> .financialadvice
+  // as a rule, but tonyrobbins.financewizards stays where it is. An operator
+  // needs this the moment a name under the aliased TLD is worth more than the
+  // redirect — otherwise the only way to keep one name is to not alias at all.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS moshpit_alias_exempt (
+      tld        TEXT NOT NULL,
+      label      TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (tld, label)
+    )
+  `);
+
   // Append-only. No UPDATE or DELETE is ever issued against this table: "who
   // claimed .eggs first" has to stay answerable after the fact, including when
   // the answer is inconvenient.
