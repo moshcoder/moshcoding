@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { coinpayConfigured } from "@/lib/session";
 import { makePkce, authorizeUrl } from "@/lib/oauth";
-import { requestHost, resolveOrigin, redirectUriFor } from "@/lib/oauth-origin";
+import { requestHosts, resolveOrigin, redirectUriFor } from "@/lib/oauth-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const secure = requestIsHttps(req);
   // Send the IdP back to the host the user is actually on, so the host-only
   // cp_pkce / cp_state cookies set below are still readable at the callback.
-  const origin = resolveOrigin(requestHost(req.headers), secure);
+  const origin = resolveOrigin(requestHosts(req.headers), secure);
   const { verifier, challenge, state } = makePkce();
   const res = NextResponse.redirect(authorizeUrl(challenge, state, redirectUriFor(origin)));
   const opts = { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: 600 };
