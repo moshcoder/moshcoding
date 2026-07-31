@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { coinpayConfigured, signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 import { exchangeCode, fetchUserinfo } from "@/lib/oauth";
-import { requestHost, resolveOrigin, redirectUriFor } from "@/lib/oauth-origin";
+import { requestHosts, resolveOrigin, redirectUriFor } from "@/lib/oauth-origin";
 import { upsertUser } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   // Same derivation as the authorize step, so the redirect_uri matches byte for
   // byte -- the callback arrives on whatever host that step named.
-  const origin = resolveOrigin(requestHost(req.headers), requestIsHttps(req));
+  const origin = resolveOrigin(requestHosts(req.headers), requestIsHttps(req));
 
   try {
     const tokens = await exchangeCode(code, verifier, redirectUriFor(origin));

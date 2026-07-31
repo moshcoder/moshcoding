@@ -32,12 +32,23 @@ function normalizeHost(raw: string): string {
 }
 
 /**
- * The host this request was addressed to. Prefers x-forwarded-host, which the
- * platform edge sets to the client-facing name; `host` alone can be the
- * internal upstream. Still untrusted -- resolveOrigin allowlists it.
+ * Candidate hosts for this request, best first.
+ *
+ * `host` leads because that is the client-facing name on our platform -- the
+ * www -> apex redirect in middleware.ts reads it and works on every domain the
+ * service answers on. Railway sets x-forwarded-host to the canonical service
+ * domain rather than the requested one, so preferring it silently sends every
+ * custom domain to the fallback origin. Other proxies do the reverse, so we
+ * keep it as a second candidate.
+ *
+ * Both are untrusted. resolveOrigin picks the first that is allowlisted, so the
+ * worst an attacker can do by forging one is select among hostnames we already
+ * serve and have already registered with the IdP.
  */
-export function requestHost(headers: Headers): string {
-  return headers.get("x-forwarded-host") || headers.get("host") || "";
+export function requestHosts(headers: Headers): string[] {
+  return [headers.get("host"), headers.get("x-forwarded-host")].filter(
+    (h): h is string => Boolean(h),
+  );
 }
 
 /**
@@ -72,14 +83,17 @@ export function allowedHosts(env: NodeJS.ProcessEnv = process.env): Set<string> 
  * authorize byte for byte.
  */
 export function resolveOrigin(
-  hostHeader: string | null | undefined,
+  hostHeaders: string | string[] | null | undefined,
   isHttps: boolean,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const host = normalizeHost(hostHeader || "");
-  if (!host) return defaultOrigin(env);
-  if (!allowedHosts(env).has(host)) return defaultOrigin(env);
-  return `${isHttps ? "https" : "http"}://${host}`;
+  const candidates = Array.isArray(hostHeaders) ? hostHeaders : [hostHeaders || ""];
+  const allowed = allowedHosts(env);
+  for (const candidate of candidates) {
+    const host = normalizeHost(candidate || "");
+    if (host && allowed.has(host)) return `${isHttps ? "https" : "http"}://${host}`;
+  }
+  return defaultOrigin(env);
 }
 
 /**

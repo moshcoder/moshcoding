@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { allowedHosts, defaultOrigin, redirectUriFor, requestHost, resolveOrigin } from "../lib/oauth-origin.ts";
+import { allowedHosts, defaultOrigin, redirectUriFor, requestHosts, resolveOrigin } from "../lib/oauth-origin.ts";
 
 const env = (over = {}) => ({ APP_BASE_URL: "https://moshcoding.com", ...over });
 
@@ -96,9 +96,28 @@ test("a malformed APP_BASE_URL does not throw or widen the allowlist", () => {
   assert.equal(resolveOrigin("evil.example", true, e), "not a url");
 });
 
-test("requestHost prefers x-forwarded-host over host", () => {
-  const h = new Headers({ host: "internal.railway.internal", "x-forwarded-host": "pit.moshcode.sh" });
-  assert.equal(requestHost(h), "pit.moshcode.sh");
-  assert.equal(requestHost(new Headers({ host: "moshcoding.com" })), "moshcoding.com");
-  assert.equal(requestHost(new Headers()), "");
+test("requestHosts puts the client-facing `host` header first", () => {
+  // Railway sets x-forwarded-host to the canonical service domain, not the
+  // requested one; preferring it sent every custom domain to the fallback.
+  const h = new Headers({ host: "pit.moshcode.sh", "x-forwarded-host": "moshcoding.up.railway.app" });
+  assert.deepEqual(requestHosts(h), ["pit.moshcode.sh", "moshcoding.up.railway.app"]);
+  assert.deepEqual(requestHosts(new Headers({ host: "moshcoding.com" })), ["moshcoding.com"]);
+  assert.deepEqual(requestHosts(new Headers()), []);
+});
+
+test("the real Railway header shape resolves to the requested host", () => {
+  const e = env({ OAUTH_ALLOWED_HOSTS: "pit.moshcode.sh" });
+  const h = new Headers({ host: "pit.moshcode.sh", "x-forwarded-host": "moshcoding.up.railway.app" });
+  assert.equal(resolveOrigin(requestHosts(h), true, e), "https://pit.moshcode.sh");
+});
+
+test("a later candidate is used when the first is not allowlisted", () => {
+  const e = env({ OAUTH_ALLOWED_HOSTS: "pit.moshcode.sh" });
+  assert.equal(resolveOrigin(["internal.upstream", "pit.moshcode.sh"], true, e), "https://pit.moshcode.sh");
+});
+
+test("no allowlisted candidate falls back", () => {
+  const e = env({ OAUTH_ALLOWED_HOSTS: "pit.moshcode.sh" });
+  assert.equal(resolveOrigin(["evil.example", "also-evil.example"], true, e), "https://moshcoding.com");
+  assert.equal(resolveOrigin([], true, e), "https://moshcoding.com");
 });
