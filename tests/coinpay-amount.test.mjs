@@ -6,7 +6,13 @@ import { setupAmountUsd } from "../lib/coinpay.ts";
 test("setupAmountUsd accepts ordinary positive dollar amounts", () => {
   assert.equal(setupAmountUsd("1.00"), 1);
   assert.equal(setupAmountUsd(" 1,234.56 "), 1234.56);
-  assert.equal(setupAmountUsd(2.345), 2.35);
+  assert.equal(setupAmountUsd(2.35), 2.35);
+});
+
+test("setupAmountUsd rejects numbers finer than a cent", () => {
+  assert.throws(() => setupAmountUsd(2.345), /fractional cents/);
+  assert.throws(() => setupAmountUsd(1.234), /fractional cents/);
+  assert.throws(() => setupAmountUsd(0.004), /fractional cents/);
 });
 
 test("setupAmountUsd rejects malformed or unsafe payment amounts", () => {
