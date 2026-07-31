@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+import { filterSignupsByStatus, type WaitlistStatus } from "@/lib/waitlist-filter";
 import MoshpitTlds from "@/components/MoshpitTlds";
 
 // Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
@@ -757,6 +758,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
   const [domains, setDomains] = useState<any[] | undefined>(undefined);
   const [active, setActive] = useState<string | null>(null);
   const [signups, setSignups] = useState<any[] | null>(null);
+  const [status, setStatus] = useState<WaitlistStatus>("all");
 
   const load = async (dn: string) => {
     setActive(dn); setSignups(null);
@@ -781,6 +783,15 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
     return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab and its waitlist shows up here.</p></section>;
   }
 
+  const filtered = signups ? filterSignupsByStatus(signups, status) : null;
+  const verifiedCount = signups?.filter((signup) => signup.verified).length ?? 0;
+  const pendingCount = signups ? signups.length - verifiedCount : 0;
+  const filters: { value: WaitlistStatus; label: string; count: number }[] = [
+    { value: "all", label: "All", count: signups?.length ?? 0 },
+    { value: "verified", label: "Confirmed", count: verifiedCount },
+    { value: "pending", label: "Pending", count: pendingCount },
+  ];
+
   return (
     <section className="card2">
       <h2>Waitlist</h2>
@@ -795,14 +806,33 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
       {active && (
         <>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <h3 className="ed-h">{active} — {signups ? signups.length : "…"} signups</h3>
-            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv`}>Export CSV</a>
+            <h3 className="ed-h">{active} — {filtered ? filtered.length : "…"} signups</h3>
+            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv&status=${status}`}>
+              {status === "all" ? "Export CSV" : "Export filtered CSV"}
+            </a>
+          </div>
+          <div className="tabs" role="group" aria-label="Filter waitlist signups">
+            {filters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`tab${status === filter.value ? " on" : ""}`}
+                aria-pressed={status === filter.value}
+                onClick={() => setStatus(filter.value)}
+              >
+                {filter.label} <span className="muted">({filter.count})</span>
+              </button>
+            ))}
           </div>
           <ul className="list">
             {signups === null && <li className="muted">Loading…</li>}
-            {signups && signups.length === 0 && <li className="muted">No signups yet — share your page.</li>}
-            {signups && signups.map((s, i) => (
-              <li key={i}>
+            {filtered && filtered.length === 0 && (
+              <li className="muted">
+                {signups?.length ? `No ${status === "verified" ? "confirmed" : status} signups.` : "No signups yet — share your page."}
+              </li>
+            )}
+            {filtered && filtered.map((s) => (
+              <li key={s.email}>
                 <span>{s.email}</span>
                 <span className="muted">{s.verified ? "✓ confirmed" : "pending"}{s.ref ? ` · ref:${s.ref}` : ""}</span>
               </li>

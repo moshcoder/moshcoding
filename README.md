@@ -63,7 +63,8 @@ moshcoding.com/?dn=yourdomain.com
   plus `hashtag` and a linktree via `socials`/`links`). Every tenant page carries a
   **"© 2026 powered by moshcoding.com"** link.
 - **Waitlist** — `POST /api/waitlist { email, dn? }`, stored in **libSQL / Turso**
-  (`signups` table, unique per email+domain) via `@libsql/client`.
+  (`signups` table, unique per email+domain) via `@libsql/client`. Domain owners
+  can filter confirmed/pending signups and export the current view as CSV.
 - **Login** — "Log in with CoinPayPortal" (OAuth2 Auth Code + PKCE); email captured to a
   `users` table. Self-disables until the `COINPAY_*` + `SESSION_SECRET` env vars are set.
 - **www → apex** redirect handled in `middleware.ts` (308 to `https://moshcoding.com`).

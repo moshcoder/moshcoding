@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import { findOrCreateAccountByEmail, ownsParkedDomain, listDomainSignups } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
+import { filterSignupsByStatus, parseWaitlistStatus } from "@/lib/waitlist-filter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,8 +16,9 @@ async function accountId(req: NextRequest): Promise<string | null> {
   return null;
 }
 
-// GET /api/waitlist/manage?dn=<domain>[&format=csv] — the signups for one of the
-// caller's parked domains. Each domain's waitlist is separate (signups.dn).
+// GET /api/waitlist/manage?dn=<domain>[&format=csv][&status=verified|pending]
+// — the signups for one of the caller's parked domains. Each domain's
+// waitlist is separate (signups.dn).
 export async function GET(req: NextRequest) {
   const id = await accountId(req);
   if (!id) return NextResponse.json({ error: "Please sign in." }, { status: 401 });
@@ -25,7 +27,11 @@ export async function GET(req: NextRequest) {
   if (!(await ownsParkedDomain(id, dn))) {
     return NextResponse.json({ error: "You don't own that domain." }, { status: 403 });
   }
-  const signups = await listDomainSignups(dn);
+  const status = parseWaitlistStatus(req.nextUrl.searchParams.get("status"));
+  if (!status) return NextResponse.json({ error: "invalid waitlist status" }, { status: 400 });
+
+  const allSignups = await listDomainSignups(dn);
+  const signups = filterSignupsByStatus(allSignups, status);
 
   if (req.nextUrl.searchParams.get("format") === "csv") {
     const rows = [["email", "verified", "ref", "created_at"]].concat(
@@ -35,9 +41,9 @@ export async function GET(req: NextRequest) {
     return new NextResponse(csv, {
       headers: {
         "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${dn}-waitlist.csv"`,
+        "content-disposition": `attachment; filename="${dn}-waitlist${status === "all" ? "" : `-${status}`}.csv"`,
       },
     });
   }
-  return NextResponse.json({ dn, count: signups.length, signups });
+  return NextResponse.json({ dn, count: signups.length, total: allSignups.length, status, signups });
 }
