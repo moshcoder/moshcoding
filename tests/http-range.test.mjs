@@ -5,6 +5,7 @@ import { parseHttpByteRange } from "../lib/http-range.ts";
 
 test("HTTP range parser handles bounded and open-ended byte ranges", () => {
   assert.deepEqual(parseHttpByteRange("bytes=2-5", 10), { start: 2, end: 5 });
+  assert.deepEqual(parseHttpByteRange("BYTES=2-5", 10), { start: 2, end: 5 });
   assert.deepEqual(parseHttpByteRange("bytes=7-", 10), { start: 7, end: 9 });
   assert.deepEqual(parseHttpByteRange("bytes=2-99", 10), { start: 2, end: 9 });
 });

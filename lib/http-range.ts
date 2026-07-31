@@ -6,7 +6,7 @@ export type HttpByteRange = {
 export function parseHttpByteRange(range: string, size: number): HttpByteRange | null {
   if (!Number.isSafeInteger(size) || size <= 0) return null;
 
-  const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(range.trim());
   if (!match) return null;
 
   const [, startText, endText] = match;
