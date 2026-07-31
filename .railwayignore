@@ -1,0 +1,15 @@
+# Source media kept in the repo but not needed to build or serve the app.
+# Railway uploads the whole working tree, and these push it past the 413 limit
+# (~332 MB) that Cloudflare enforces on the upload endpoint.
+#
+# The copies the app actually serves live under public/ -- app/videos/page.tsx
+# reads public/videos, and the badges/assets it renders are public/badges and
+# public/assets. Nothing in app/, lib/, components/ or scripts/ reads the
+# top-level directories below, so excluding them only shrinks the upload.
+videos/
+images/
+audio/
+
+.git/
+node_modules/
+.next/
