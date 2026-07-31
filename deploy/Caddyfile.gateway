@@ -1,0 +1,54 @@
+# The other half of resolution: an ingress that accepts a Moshpit name as a
+# Host header.
+#
+# The resolvers answer `scrambled.eggs` with the gateway's address, and the
+# browser then connects there sending `Host: scrambled.eggs`. Today that lands
+# on Railway's edge, which only knows the domains registered against the
+# service and answers `{"status":"error","code":404,"message":"Application not
+# found"}` for everything else — and there is no way to register a domain per
+# Moshpit name, because the whole point is that anyone can invent one.
+#
+# So the ingress has to be something that accepts *any* Host. Run this on the
+# same box as a resolver (it already needs a static address), then point the
+# resolvers at it:
+#
+#   MOSHPIT_GATEWAY_A=<this box's address>
+#
+# Until the hosting grid (PRD 0002 R7) exists to proxy into, this serves the
+# clearnet preview page for the name — PRD 0004 R11's "extension-less preview
+# fallback", which beats a 404 from a CDN nobody can debug.
+
+{
+	# Certificates for `scrambled.eggs` are not obtainable from a public CA: no
+	# CA recognises a namespace it cannot validate against the ICANN root. So
+	# port 80 is served plainly and HTTPS is left to clients that opted into
+	# the namespace some other way (the extension, or a Moshpit CA when there
+	# is one). Redirecting to HTTPS here would break every visitor this exists
+	# to serve.
+	auto_https off
+}
+
+:80 {
+	# The gateway's own name still behaves normally.
+	@self host pit.moshcode.sh dns.pit.moshcode.sh
+	handle @self {
+		redir https://pit.moshcode.sh{uri} permanent
+	}
+
+	handle {
+		rewrite * /pit
+		reverse_proxy https://pit.moshcode.sh {
+			# Railway routes on Host, so the upstream request has to carry the
+			# name Railway knows; the Moshpit name travels alongside it for
+			# whatever serves the name once the grid is real.
+			header_up Host pit.moshcode.sh
+			header_up X-Moshpit-Name {host}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
