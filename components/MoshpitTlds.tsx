@@ -18,6 +18,33 @@ type Tld = {
   created_at: string;
 };
 
+type PinKind = "tls" | "mtp";
+
+type Pin = {
+  tld: string;
+  pin: string;
+  kind: PinKind;
+  note: string | null;
+  created_at: string;
+};
+
+type PinDraft = {
+  kind: PinKind;
+  pin: string;
+  note: string;
+};
+
+const emptyPinDraft = (): PinDraft => ({ kind: "tls", pin: "", note: "" });
+
+const formatCreatedAt = (value: string) => {
+  const sqliteUtc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value);
+  const date = new Date(sqliteUtc ? `${value.replace(" ", "T")}Z` : value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+
+const tldRowId = (tld: string) => `moshpit-tld-${tld}`;
+const pinPanelId = (tld: string) => `moshpit-pins-${tld}`;
+
 export default function MoshpitTlds() {
   const [tlds, setTlds] = useState<Tld[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +56,8 @@ export default function MoshpitTlds() {
   const [aliasTarget, setAliasTarget] = useState<Record<string, string>>({});
   const [exempt, setExempt] = useState<Record<string, string[]>>({});
   const [exemptDraft, setExemptDraft] = useState<Record<string, string>>({});
+  const [pins, setPins] = useState<Partial<Record<string, Pin[]>>>({});
+  const [pinDrafts, setPinDrafts] = useState<Partial<Record<string, PinDraft>>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -59,6 +88,25 @@ export default function MoshpitTlds() {
     const res = await fetch(`/api/moshpit/tlds/${tld}/exempt`, { cache: "no-store" });
     const json = (await res.json().catch(() => ({}))) as { labels?: string[]; exempt?: string[] };
     setExempt((prev) => ({ ...prev, [tld]: json.labels ?? json.exempt ?? [] }));
+  }, []);
+
+  const loadPins = useCallback(async (tld: string) => {
+    const key = `pins:load:${tld}`;
+    setBusy(key);
+    setError(null);
+    try {
+      const res = await fetch(`/api/moshpit/tlds/${tld}/pins`, { cache: "no-store" });
+      const json = (await res.json().catch(() => ({}))) as { pins?: Pin[]; error?: string };
+      if (!res.ok) {
+        setError(json.error || `Could not load key pins (${res.status})`);
+        return;
+      }
+      setPins((prev) => ({ ...prev, [tld]: json.pins ?? [] }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load key pins");
+    } finally {
+      setBusy(null);
+    }
   }, []);
 
   const run = useCallback(
@@ -102,6 +150,44 @@ export default function MoshpitTlds() {
     if (ok) setClaim("");
   };
 
+  const publishPin = async (tld: string) => {
+    const draft = pinDrafts[tld] ?? emptyPinDraft();
+    const pin = draft.pin.trim();
+    if (!pin) return;
+
+    const ok = await run(
+      `pin:add:${tld}`,
+      () =>
+        fetch(`/api/moshpit/tlds/${tld}/pins`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin, kind: draft.kind, note: draft.note.trim() }),
+        }),
+      `Published ${draft.kind.toUpperCase()} key for .${tld}`,
+    );
+    if (!ok) return;
+
+    setPinDrafts((prev) => ({ ...prev, [tld]: emptyPinDraft() }));
+    await loadPins(tld);
+  };
+
+  const withdrawPin = async (tld: string, entry: Pin) => {
+    const confirmed = window.confirm(
+      `Withdraw this ${entry.kind.toUpperCase()} key from .${tld}? Connections using it may stop working.`,
+    );
+    if (!confirmed) return;
+
+    const ok = await run(
+      `pin:remove:${tld}:${entry.pin}`,
+      () =>
+        fetch(`/api/moshpit/tlds/${tld}/pins?pin=${encodeURIComponent(entry.pin)}`, {
+          method: "DELETE",
+        }),
+      `Withdrew ${entry.kind.toUpperCase()} key from .${tld}`,
+    );
+    if (ok) await loadPins(tld);
+  };
+
   if (loading) return <section className="card2"><h2>Moshpit TLDs</h2><p className="sub">Loading…</p></section>;
 
   return (
@@ -126,8 +212,8 @@ export default function MoshpitTlds() {
         </button>
       </div>
 
-      {error ? <p className="sub" style={{ color: "#ff6b6b" }}>{error}</p> : null}
-      {note ? <p className="sub" style={{ color: "#5ad18c" }}>{note}</p> : null}
+      {error ? <p className="sub" role="alert" style={{ color: "#ff6b6b" }}>{error}</p> : null}
+      {note ? <p className="sub" role="status" aria-live="polite" style={{ color: "#5ad18c" }}>{note}</p> : null}
 
       {tlds.length === 0 ? (
         <p className="sub">You don&apos;t hold any TLDs yet.</p>
@@ -136,8 +222,14 @@ export default function MoshpitTlds() {
           {tlds.map((t) => {
             const target = aliasTarget[t.tld] ?? "";
             const labels = exempt[t.tld];
+            const publishedPins = pins[t.tld];
+            const pinDraft = pinDrafts[t.tld] ?? emptyPinDraft();
             return (
-              <li key={t.tld} style={{ borderTop: "1px solid rgba(255,255,255,.08)", padding: "12px 0" }}>
+              <li
+                id={tldRowId(t.tld)}
+                key={t.tld}
+                style={{ borderTop: "1px solid rgba(255,255,255,.08)", padding: "12px 0", scrollMarginTop: 16 }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <b>.{t.tld}</b>
                   {t.alias_of ? (
@@ -191,6 +283,30 @@ export default function MoshpitTlds() {
 
                   <button onClick={() => void loadExempt(t.tld)}>
                     {labels ? "Refresh held-back names" : "Held-back names"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (publishedPins) {
+                        setPins((prev) => {
+                          const next = { ...prev };
+                          delete next[t.tld];
+                          return next;
+                        });
+                      } else {
+                        void loadPins(t.tld);
+                      }
+                    }}
+                    disabled={busy === `pins:load:${t.tld}`}
+                    aria-expanded={publishedPins !== undefined}
+                    aria-controls={pinPanelId(t.tld)}
+                  >
+                    {busy === `pins:load:${t.tld}`
+                      ? "Loading keys…"
+                      : publishedPins
+                        ? "Hide key pins"
+                        : "Key pins"}
                   </button>
                 </div>
 
@@ -253,6 +369,122 @@ export default function MoshpitTlds() {
                         disabled={busy === `exempt:${t.tld}`}
                       >
                         Hold back
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {publishedPins ? (
+                  <div id={pinPanelId(t.tld)} style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <p className="sub" style={{ margin: 0, flex: 1 }}>
+                        {t.alias_of
+                          ? `Pins published directly on .${t.tld} protect held-back names only. Names that follow the redirect use .${t.alias_of}'s pins.`
+                          : "Publish both old and new keys during rotation, then withdraw the old one after deployment."}
+                      </p>
+                      {t.alias_of ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void loadPins(t.alias_of!);
+                            document
+                              .getElementById(tldRowId(t.alias_of!))
+                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }}
+                          disabled={busy === `pins:load:${t.alias_of}`}
+                        >
+                          Manage .{t.alias_of} pins
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void loadPins(t.tld)}
+                        disabled={busy === `pins:load:${t.tld}`}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+
+                    {publishedPins.length === 0 ? (
+                      <p className="sub">No TLS or MTP keys published yet.</p>
+                    ) : (
+                      <ul style={{ listStyle: "none", padding: 0, margin: "8px 0" }}>
+                        {publishedPins.map((entry) => (
+                          <li
+                            key={entry.pin}
+                            style={{
+                              borderTop: "1px solid rgba(255,255,255,.08)",
+                              padding: "8px 0",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <b>{entry.kind.toUpperCase()}</b>
+                              <code style={{ overflowWrap: "anywhere", flex: 1 }}>{entry.pin}</code>
+                              <span className="sub">{formatCreatedAt(entry.created_at)}</span>
+                              <button
+                                type="button"
+                                onClick={() => void withdrawPin(t.tld, entry)}
+                                disabled={busy === `pin:remove:${t.tld}:${entry.pin}`}
+                              >
+                                {busy === `pin:remove:${t.tld}:${entry.pin}` ? "Withdrawing…" : "Withdraw"}
+                              </button>
+                            </div>
+                            {entry.note ? <p className="sub" style={{ margin: "4px 0 0" }}>{entry.note}</p> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <select
+                        value={pinDraft.kind}
+                        onChange={(e) =>
+                          setPinDrafts((prev) => ({
+                            ...prev,
+                            [t.tld]: { ...pinDraft, kind: e.target.value as PinKind },
+                          }))
+                        }
+                        aria-label={`Key type for .${t.tld}`}
+                      >
+                        <option value="tls">TLS</option>
+                        <option value="mtp">MTP</option>
+                      </select>
+                      <input
+                        value={pinDraft.pin}
+                        onChange={(e) =>
+                          setPinDrafts((prev) => ({
+                            ...prev,
+                            [t.tld]: { ...pinDraft, pin: e.target.value },
+                          }))
+                        }
+                        placeholder="base64 SHA-256 SPKI pin"
+                        aria-label={`Key pin for .${t.tld}`}
+                        spellCheck={false}
+                        style={{ flex: "2 1 280px" }}
+                      />
+                      <input
+                        value={pinDraft.note}
+                        onChange={(e) =>
+                          setPinDrafts((prev) => ({
+                            ...prev,
+                            [t.tld]: { ...pinDraft, note: e.target.value },
+                          }))
+                        }
+                        placeholder="note (optional)"
+                        aria-label={`Key note for .${t.tld}`}
+                        maxLength={200}
+                        style={{ flex: "1 1 180px" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void publishPin(t.tld)}
+                        disabled={busy === `pin:add:${t.tld}` || !pinDraft.pin.trim()}
+                      >
+                        {busy === `pin:add:${t.tld}`
+                          ? "Publishing…"
+                          : t.alias_of
+                            ? "Publish held-back key"
+                            : "Publish key"}
                       </button>
                     </div>
                   </div>
