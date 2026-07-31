@@ -16,6 +16,7 @@ import { createGatewayResolver } from "../lib/dns/gateway";
 import { DEFAULT_RESOLVE_MODE, type ResolveMode } from "../lib/dns/policy";
 import { createRateLimiter } from "../lib/dns/ratelimit";
 import { createRegistryClient, DEFAULT_REGISTRY_BASE } from "../lib/dns/registry";
+import { createRootProbe } from "../lib/dns/roots";
 import { createDnsServer } from "../lib/dns/server";
 import { createForwarder, parseUpstreams } from "../lib/dns/upstream";
 
@@ -65,11 +66,19 @@ const gateway = createGatewayResolver({
   ipv6: list(env.MOSHPIT_GATEWAY_AAAA),
 });
 
+// Off unless asked for: with it on, a name nobody holds under an ending the
+// legacy root does not have resolves to the gateway, which lands the visitor on
+// the pit with the name filled in. That is a funnel, and a funnel is a product
+// decision rather than a default a resolver should assume.
+const catchAll = /^(1|true|yes|on)$/i.test(env.MOSHPIT_DNS_CATCHALL ?? "");
+
 const dns = createDnsServer({
   registry,
   forwarder,
   gateway,
   mode,
+  catchAll,
+  rootProbe: catchAll ? createRootProbe({ forwarder }) : undefined,
   ttl: number(env.MOSHPIT_DNS_TTL, 60),
   address,
   port,
@@ -83,6 +92,7 @@ const dns = createDnsServer({
 const ports = await dns.listen();
 log(`listening on ${address}:${ports.udp} (udp) and ${address}:${ports.tcp} (tcp), mode=${mode}`);
 log(`registry ${registryBase} · gateway ${gatewayHost} · upstreams ${upstreams.map((u) => u.host).join(", ")}`);
+if (catchAll) log("catch-all ON — unclaimed names under non-root endings resolve to the gateway");
 
 // Warm the gateway addresses at boot rather than on the first query, so the
 // first person through the door does not pay for the lookup.

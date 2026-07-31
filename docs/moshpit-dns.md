@@ -155,12 +155,45 @@ namespace's whole premise is that anyone can invent one. Verified with
 `curl -H 'Host: fuck.yeah' http://<pit address>/`.
 
 So a deployment needs an ingress that accepts any Host, on the same box as a
-resolver, with `MOSHPIT_GATEWAY_A` pointed at it.
-`deploy/Caddyfile.gateway` is that ingress: it serves the clearnet preview
-page for the name (PRD `0004` R11) until the hosting grid exists to proxy into.
+resolver, with `MOSHPIT_GATEWAY_A` pointed at it. `deploy/Caddyfile.gateway` is
+that ingress. Until the hosting grid exists to proxy into, it sends the visitor
+to the pit with the name they typed:
+
+```
+mosh.whatever  ->  302  ->  https://app.moshcode.sh/pit?name=mosh.whatever
+```
+
+A redirect rather than a proxy, deliberately: proxying would leave people
+signing in under a hostname no CA will vouch for, with a session cookie on a
+domain the app does not own. The redirect puts them on the real origin, with a
+real padlock, where signing in works — and the pit then offers them the ending
+the name sits under.
 
 None of this changes the resolver — that is why the gateway address is a
 setting rather than a constant.
+
+## The catch-all
+
+By default a name nobody has claimed gets clearnet's verdict, which is
+NXDOMAIN — an error page. `MOSHPIT_DNS_CATCHALL=1` changes that: an unclaimed
+name under an ending **the legacy root does not have** resolves to the gateway,
+and the visitor lands on the pit with `mosh.whatever` filled in, one form away
+from holding the ending it sits under.
+
+The boundary is the entire feature. `asdkjh.com` is NXDOMAIN too, and answering
+that one would make this resolver a typo-squatter for the whole internet — the
+behaviour ISPs were rightly hated for. So the catch-all fires only when the TLD
+itself is absent from the root, which is checked by asking the upstreams for the
+TLD's SOA (one cached query per ending, not per name) rather than by shipping an
+IANA list that would be stale within the week. An unreachable upstream fails
+closed: unknown means "the root has it".
+
+Answers are marked: `aa` is 0, because nobody holds the name and claiming
+authority over it would be a lie, and a `TXT` lookup says `unclaimed=1`.
+
+Off by default. It makes the resolver answer for names the registry never
+granted, and that is a product decision rather than something a resolver should
+assume on your behalf.
 
 ## What this does not fix
 

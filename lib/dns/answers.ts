@@ -32,6 +32,8 @@ export type RegistryLookup = {
   exempt?: boolean;
   /** Where the owner points the name, when they point it somewhere specific. */
   target?: string | null;
+  /** Nobody holds this name — the catch-all is sending them to claim it. */
+  unclaimed?: boolean;
 };
 
 /**
@@ -156,7 +158,8 @@ export function moshpitAnswer(opts: {
       ttl,
       txt: [
         `v=moshpit1 name=${lookup.name} resolved=${lookup.resolved} ` +
-          `${pointer.kind === "none" ? `gateway=${gateway.host}` : `target=${pointer.value}`}`,
+          `${pointer.kind === "none" ? `gateway=${gateway.host}` : `target=${pointer.value}`}` +
+          `${lookup.unclaimed ? " unclaimed=1" : ""}`,
       ],
     });
   } else if (question.type === TYPE.SOA) {
