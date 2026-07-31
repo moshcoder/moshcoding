@@ -1,4 +1,9 @@
 :root {
+  /* The app is dark everywhere (body background is --ink). Saying so keeps the
+     browser from rendering form chrome it owns -- autofill fills, spinners,
+     scrollbars -- for a light page, which lands dark-on-dark here. */
+  color-scheme: dark;
+
   --ink: #080908;
   --panel: #101210;
   --line: #1e231c;
@@ -463,17 +468,21 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
   border-radius: 8px; padding: 0 14px; min-width: 260px; flex: 1 1 260px;
 }
 .pit-dot { font-family: var(--mono); color: var(--acid); font-size: 1.2rem; }
+/* --ink is the page background, not a text colour; on --panel it is invisible. */
 .pit-field input {
   flex: 1; background: transparent; border: 0; outline: 0;
-  color: var(--ink); font-family: var(--mono); font-size: 1.2rem; padding: 14px 0;
+  color: var(--bone); font-family: var(--mono); font-size: 1.2rem; padding: 14px 0;
 }
+.pit-field input::placeholder { color: #566150; }
+/* The input clears its own outline, so the wrapper carries the focus ring. */
+.pit-field:focus-within { border-color: var(--acid); }
 .pit-result { min-height: 2.6rem; margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .pit-yes { color: var(--acid); margin: 0; }
 .pit-no { color: var(--ash); margin: 0; }
 
 .pit-how { max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 0; }
 .pit-steps { margin: 0; padding-left: 20px; color: var(--bone); line-height: 1.7; max-width: 62ch; }
-.pit-steps strong { color: var(--ink); }
+.pit-steps strong { color: var(--bone); }
 .pit-list { list-style: none; display: flex; flex-wrap: wrap; gap: 10px; padding: 0; margin: 0 0 18px; }
 .pit-list li {
   font-family: var(--mono); background: var(--panel);
