@@ -35,16 +35,17 @@
 		redir https://pit.moshcode.sh{uri} permanent
 	}
 
+	# Any other Host is a Moshpit name that resolved here because it has no
+	# site of its own yet. Send it to the pit with the name filled in: whoever
+	# typed `mosh.whatever` has just demonstrated demand for that name, and the
+	# pit can offer them the ending it sits under.
+	#
+	# A redirect rather than a proxy, deliberately. Proxying would leave people
+	# signing in under a hostname no certificate authority will vouch for, with
+	# a session cookie on a domain the app does not own. The redirect puts them
+	# on the real origin, with a real padlock, where signing in works.
 	handle {
-		rewrite * /pit
-		reverse_proxy https://pit.moshcode.sh {
-			# Railway routes on Host, so the upstream request has to carry the
-			# name Railway knows; the Moshpit name travels alongside it for
-			# whatever serves the name once the grid is real.
-			header_up Host pit.moshcode.sh
-			header_up X-Moshpit-Name {host}
-			header_up X-Forwarded-Host {host}
-		}
+		redir https://app.moshcode.sh/pit?name={host} 302
 	}
 
 	log {

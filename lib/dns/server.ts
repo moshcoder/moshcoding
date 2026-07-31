@@ -11,6 +11,7 @@ import net from "node:net";
 import { moshpitAnswer, type GatewayAddresses } from "./answers";
 import type { GatewayResolver } from "./gateway";
 import { clearnetAnswered, planQuery, type ResolveMode } from "./policy";
+import type { RootProbe } from "./roots";
 import type { RateLimiter } from "./ratelimit";
 import type { RegistryClient } from "./registry";
 import type { Forwarder } from "./upstream";
@@ -30,6 +31,8 @@ export type ServerStats = {
   moshpit: number;
   forwarded: number;
   refused: number;
+  /** Unclaimed names sent to the pit, when the catch-all is on. */
+  catchall: number;
   failed: number;
   dropped: number;
   malformed: number;
@@ -53,6 +56,14 @@ export type DnsServerOptions = {
   address?: string;
   port?: number;
   rateLimiter?: RateLimiter;
+  /**
+   * Answer for names nobody holds, under TLDs the legacy root does not have,
+   * so a typed-in name lands on the pit instead of an error page. Off by
+   * default: it makes the resolver answer for names the registry never
+   * granted, which is a product decision, not a default.
+   */
+  catchAll?: boolean;
+  rootProbe?: RootProbe;
   log?: (line: string) => void;
   randomId?: () => number;
 };
@@ -75,6 +86,8 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
   // the kernel picks the UDP port, and TCP then has to follow it.
   let port = options.port ?? 53;
   const address = options.address ?? "0.0.0.0";
+  const catchAll = Boolean(options.catchAll);
+  const rootProbe = options.rootProbe ?? null;
   const log = options.log ?? (() => {});
   const randomId = options.randomId ?? (() => Math.floor(Math.random() * 0x10000));
 
@@ -83,6 +96,7 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
     moshpit: 0,
     forwarded: 0,
     refused: 0,
+    catchall: 0,
     failed: 0,
     dropped: 0,
     malformed: 0,
@@ -175,6 +189,47 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
     if (!message) return null;
     message.additionals = echoOpt(query);
     return { buffer: encodeMessage(message), message };
+  }
+
+  /**
+   * The answer for a name nobody has claimed, under a TLD the legacy root does
+   * not have.
+   *
+   * Off by default, and gated on the root probe rather than on "clearnet said
+   * NXDOMAIN". Those are not the same question: `asdkjh.com` is also NXDOMAIN,
+   * and answering that one would make this resolver a typo-squatter for the
+   * entire internet instead of a door into the namespace.
+   */
+  async function catchAllAnswer(query: Message, name: string): Promise<Buffer | null> {
+    if (!catchAll || !rootProbe) return null;
+    const tld = name.split(".").pop() ?? "";
+    if (!tld || (await rootProbe.exists(tld))) return null;
+
+    let addresses: GatewayAddresses;
+    try {
+      addresses = await gateway.addresses();
+    } catch {
+      addresses = gateway.current();
+    }
+    if (!addresses.ipv4.length && !addresses.ipv6.length) return null;
+
+    const message = moshpitAnswer({
+      id: query.id,
+      question: query.questions[0],
+      rd: query.flags.rd,
+      // Registered as far as the answer is concerned — the gateway is a real
+      // place to send them — but with no target, so it is the gateway's
+      // addresses they get and the gateway that decides what to show.
+      lookup: { name, resolved: name, registered: true, unclaimed: true },
+      gateway: addresses,
+      ttl: Math.min(ttl, 60),
+    });
+    if (!message) return null;
+    message.additionals = echoOpt(query);
+    // Not authoritative: nobody holds this name, and saying otherwise would
+    // claim an authority the registry never granted.
+    message.flags.aa = false;
+    return encodeMessage(message);
   }
 
   async function handle(rawQuery: Buffer, ctx: QueryContext = { transport: "udp" }): Promise<Buffer | null> {
@@ -271,6 +326,18 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
         stats.moshpit++;
         return finish("moshpit(backfill)", answer.buffer);
       }
+
+      // Nobody holds the name and clearnet has never heard of it. With the
+      // catch-all on, that is not a dead end but the most interesting visitor
+      // the namespace gets: someone who typed a name that could still be
+      // theirs. Send them to the gateway, which lands them on the pit with the
+      // name filled in.
+      const unclaimed = await catchAllAnswer(query, plan.name);
+      if (unclaimed) {
+        stats.catchall++;
+        return finish("catchall(unclaimed)", unclaimed);
+      }
+
       stats.forwarded++;
       return finish("forwarded(no moshpit name)", relayed);
     } catch (err) {
