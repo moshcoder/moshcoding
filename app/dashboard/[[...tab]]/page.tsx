@@ -2,10 +2,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+import MoshpitTlds from "@/components/MoshpitTlds";
 
 // Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
 // bare /dashboard). Keep this in sync with the tab buttons below.
-const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns"] as const;
+const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns", "tlds"] as const;
 type Tab = (typeof TABS)[number];
 
 type Org = { id: string; name: string };
@@ -109,9 +110,12 @@ export default function Dashboard() {
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
         <button className={`tab${tab === "dns" ? " on" : ""}`} onClick={() => setTab("dns")}>Custom domain</button>
+        <button className={`tab${tab === "tlds" ? " on" : ""}`} onClick={() => setTab("tlds")}>Moshpit TLDs</button>
       </div>
 
-      {tab === "dns" ? (
+      {tab === "tlds" ? (
+        <MoshpitTlds />
+      ) : tab === "dns" ? (
         <DomainsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
