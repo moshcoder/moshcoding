@@ -1,0 +1,32 @@
+# The Moshpit resolver. Build from the repo root:
+#
+#   docker build -f deploy/Dockerfile.dns -t moshpit-dns .
+#   docker run -d --restart=always --name moshpit-dns \
+#     -p 53:5354/udp -p 53:5354/tcp -p 8053:8053 moshpit-dns
+#
+# It listens on 5354 inside the container and the host maps 53 onto it, so
+# nothing here needs root or CAP_NET_BIND_SERVICE.
+#
+# No dependency install step, because there are no dependencies: the resolver
+# is node built-ins and `fetch`. That is deliberate for a process listening on
+# UDP/53 — the attack surface is the code in this repo and nothing else.
+FROM oven/bun:1-slim
+
+WORKDIR /app
+COPY package.json ./
+COPY lib/dns ./lib/dns
+COPY scripts/moshpit-dns.ts ./scripts/moshpit-dns.ts
+
+ENV MOSHPIT_DNS_PORT=5354 \
+    MOSHPIT_DNS_HTTP_PORT=8053 \
+    MOSHPIT_DNS_ADDRESS=0.0.0.0
+
+EXPOSE 5354/udp 5354/tcp 8053/tcp
+USER bun
+
+# /health answers with the query counters, which is enough for a load balancer
+# to tell a wedged resolver from a working one.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD bun -e "fetch('http://127.0.0.1:'+(process.env.MOSHPIT_DNS_HTTP_PORT||8053)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["bun", "run", "scripts/moshpit-dns.ts"]

@@ -87,6 +87,22 @@ Builds from the **Dockerfile** (`oven/bun` → `bun run build` → `bun run star
 `railway.json` sets the start command + `/api/me` health check. Set the env vars above in
 the service variables — no volume needed, Turso is the database.
 
+## Moshpit DNS
+
+Public resolvers that answer `.moshpit`, `.eggs`, `.yeah` — and `.com` and the
+rest of the internet — so the namespace works without the browser extension.
+Point a laptop, phone or router at one and Moshpit names just resolve; clearnet
+names are forwarded to 8.8.8.8 and 1.1.1.1 untouched.
+
+```bash
+bun run dns                                     # port 5354, no privileges needed
+dig @127.0.0.1 -p 5354 +short anything.moshpit  # -> the gateway's address
+dig @127.0.0.1 -p 5354 +short example.com       # -> the ordinary answer
+```
+
+Runs as its own process (DNS is UDP, which a web host will not give you), has
+no dependencies and no database. Docs: **[docs/moshpit-dns.md](docs/moshpit-dns.md)**.
+
 ## moshcode CLI
 
 The **#moshcoding agent** — a lean wrapper for agentic coding. It installs and drives

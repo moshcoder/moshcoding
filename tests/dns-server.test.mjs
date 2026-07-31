@@ -1,0 +1,288 @@
+// End-to-end resolver behaviour: a real server, a stub registry and a stub
+// upstream. These are the cases someone would actually notice — a Moshpit name
+// resolving, `.com` still working, and a contested name going to whichever
+// namespace the mode says owns it.
+import assert from "node:assert/strict";
+import dgram from "node:dgram";
+import net from "node:net";
+import test from "node:test";
+
+import { createGatewayResolver } from "../lib/dns/gateway.ts";
+import { createRateLimiter } from "../lib/dns/ratelimit.ts";
+import { createRegistryClient } from "../lib/dns/registry.ts";
+import { createDnsServer } from "../lib/dns/server.ts";
+import { createForwarder, parseUpstreams } from "../lib/dns/upstream.ts";
+import { CLASS, RCODE, TYPE, decodeMessage, encodeMessage } from "../lib/dns/wire.ts";
+
+const GATEWAY_V4 = "203.0.113.7";
+const CLEARNET_V4 = "198.51.100.9";
+
+function query(name, type = TYPE.A, id = 0x4242) {
+  return encodeMessage({
+    id,
+    flags: { rd: true },
+    questions: [{ name, type, class: CLASS.IN }],
+  });
+}
+
+/** A canned upstream: NXDOMAIN unless the name is in `zone`. */
+function stubUpstream(zone = {}) {
+  return async (_upstream, payload) => {
+    const q = decodeMessage(payload);
+    const question = q.questions[0];
+    const address = zone[question.name];
+    return encodeMessage({
+      id: q.id,
+      flags: { qr: true, rd: true, ra: true, rcode: address ? RCODE.NOERROR : RCODE.NXDOMAIN },
+      questions: q.questions,
+      answers: address ? [{ name: question.name, type: TYPE.A, class: CLASS.IN, ttl: 300, address }] : [],
+    });
+  };
+}
+
+/** A registry that holds exactly the names it is given. */
+function stubRegistry(names, options = {}) {
+  return createRegistryClient({
+    base: "http://registry.test",
+    ...options,
+    fetchImpl: async (url) => {
+      if (options.down) throw new Error("registry unreachable");
+      const name = new URL(url).searchParams.get("name");
+      const entry = names[name];
+      return new Response(
+        JSON.stringify({
+          name,
+          resolved: entry?.resolved ?? name,
+          registered: Boolean(entry),
+          aliased: Boolean(entry?.resolved && entry.resolved !== name),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+}
+
+function harness({ mode = "clearnet", names = {}, zone = {}, registryDown = false, gatewayV4 = [GATEWAY_V4], ...rest } = {}) {
+  const forwarder = createForwarder({ ask: stubUpstream(zone) });
+  const server = createDnsServer({
+    registry: stubRegistry(names, { down: registryDown }),
+    forwarder,
+    gateway: createGatewayResolver({ host: "pit.moshcode.sh", forwarder, ipv4: gatewayV4, ipv6: [] }),
+    mode,
+    ttl: 60,
+    port: 0,
+    address: "127.0.0.1",
+    ...rest,
+  });
+  return server;
+}
+
+const addresses = (msg, type = TYPE.A) => msg.answers.filter((r) => r.type === type).map((r) => r.address);
+
+test("a Moshpit name resolves to the gateway when clearnet has never heard of it", async () => {
+  const dns = harness({ names: { "scrambled.eggs": {} } });
+  const response = decodeMessage(await dns.handle(query("scrambled.eggs")));
+
+  assert.equal(response.flags.rcode, RCODE.NOERROR);
+  assert.equal(response.flags.aa, true, "we are authoritative for the Moshpit namespace");
+  assert.deepEqual(addresses(response), [GATEWAY_V4]);
+  assert.equal(response.id, 0x4242, "the client's transaction id comes back unchanged");
+  await dns.close();
+});
+
+test("the rest of the internet still works", async () => {
+  const dns = harness({ zone: { "example.com": CLEARNET_V4 } });
+  const response = decodeMessage(await dns.handle(query("example.com")));
+
+  assert.deepEqual(addresses(response), [CLEARNET_V4]);
+  assert.equal(dns.stats().forwarded, 1);
+  assert.equal(dns.stats().moshpit, 0);
+  await dns.close();
+});
+
+test("a contested name goes to clearnet by default, and to Moshpit on request", async () => {
+  // `profullstack.ai` exists in both namespaces. Which one a user gets is a
+  // setting, not a race.
+  const contested = { names: { "profullstack.ai": {} }, zone: { "profullstack.ai": CLEARNET_V4 } };
+
+  const backfill = harness({ ...contested, mode: "clearnet" });
+  assert.deepEqual(addresses(decodeMessage(await backfill.handle(query("profullstack.ai")))), [CLEARNET_V4]);
+  await backfill.close();
+
+  const override = harness({ ...contested, mode: "moshpit" });
+  assert.deepEqual(addresses(decodeMessage(await override.handle(query("profullstack.ai")))), [GATEWAY_V4]);
+  await override.close();
+});
+
+test("subdomains of a Moshpit name reach the gateway too", async () => {
+  const dns = harness({ names: { "scrambled.eggs": {} } });
+  const response = decodeMessage(await dns.handle(query("www.scrambled.eggs")));
+  assert.deepEqual(addresses(response), [GATEWAY_V4]);
+  assert.equal(response.answers[0].name, "www.scrambled.eggs");
+  await dns.close();
+});
+
+test("an aliased TLD answers with the CNAME it actually followed", async () => {
+  const dns = harness({ names: { "scrambled.eggs": { resolved: "scrambled.agent" } } });
+  const response = decodeMessage(await dns.handle(query("scrambled.eggs")));
+
+  assert.equal(response.answers[0].type, TYPE.CNAME);
+  assert.equal(response.answers[0].target, "scrambled.agent");
+  assert.deepEqual(addresses(response), [GATEWAY_V4]);
+  await dns.close();
+});
+
+test("an unregistered Moshpit-shaped name is left to clearnet's verdict", async () => {
+  const dns = harness({ names: {} });
+  const response = decodeMessage(await dns.handle(query("nobody.eggs")));
+  assert.equal(response.flags.rcode, RCODE.NXDOMAIN);
+  await dns.close();
+});
+
+test("a registry outage costs Moshpit names, not the whole internet", async () => {
+  const dns = harness({ names: { "scrambled.eggs": {} }, zone: { "example.com": CLEARNET_V4 }, registryDown: true });
+
+  assert.deepEqual(addresses(decodeMessage(await dns.handle(query("example.com")))), [CLEARNET_V4]);
+  // The Moshpit name degrades to whatever clearnet says, which is NXDOMAIN —
+  // a resolver that SERVFAILs here would look like a broken network.
+  assert.equal(decodeMessage(await dns.handle(query("scrambled.eggs"))).flags.rcode, RCODE.NXDOMAIN);
+  await dns.close();
+});
+
+test("a gateway with no known address does not answer for names it cannot serve", async () => {
+  const dns = harness({ names: { "scrambled.eggs": {} }, gatewayV4: [] });
+  const response = decodeMessage(await dns.handle(query("scrambled.eggs")));
+  assert.equal(response.flags.rcode, RCODE.NXDOMAIN, "better an honest NXDOMAIN than a name cached as address-less");
+  await dns.close();
+});
+
+test("upstream failure becomes SERVFAIL rather than a hung client", async () => {
+  const forwarder = createForwarder({
+    ask: async () => {
+      throw new Error("network is down");
+    },
+  });
+  const dns = createDnsServer({
+    registry: stubRegistry({}),
+    forwarder,
+    gateway: createGatewayResolver({ host: "pit.moshcode.sh", forwarder, ipv4: [GATEWAY_V4], ipv6: [] }),
+    port: 0,
+    address: "127.0.0.1",
+  });
+  const response = decodeMessage(await dns.handle(query("example.com")));
+  assert.equal(response.flags.rcode, RCODE.SERVFAIL);
+  await dns.close();
+});
+
+test("reflection bait is refused or dropped, never amplified", async () => {
+  const dns = harness({ zone: { "example.com": CLEARNET_V4 } });
+
+  const any = decodeMessage(await dns.handle(query("example.com", TYPE.ANY)));
+  assert.equal(any.flags.rcode, RCODE.REFUSED);
+  assert.equal(any.answers.length, 0);
+
+  // A *response* arriving at the listening socket gets no reply at all;
+  // replying would make us the second hop of someone else's attack.
+  const response = encodeMessage({ id: 1, flags: { qr: true, rcode: 0 }, questions: [] });
+  assert.equal(await dns.handle(response), null);
+
+  // Garbage that is not even a header cannot be answered.
+  assert.equal(await dns.handle(Buffer.from([1, 2, 3])), null);
+  await dns.close();
+});
+
+test("a client over its rate limit is dropped rather than answered", async () => {
+  const limiter = createRateLimiter({ qps: 0.0001, burst: 2 });
+  assert.equal(limiter.allow("192.0.2.1"), true);
+  assert.equal(limiter.allow("192.0.2.1"), true);
+  assert.equal(limiter.allow("192.0.2.1"), false, "the third query in a burst of two is dropped");
+  assert.equal(limiter.allow("192.0.2.2"), true, "a different client has its own budget");
+});
+
+test("EDNS is echoed, so clients keep using it", async () => {
+  const dns = harness({ names: { "scrambled.eggs": {} } });
+  const withEdns = encodeMessage({
+    id: 9,
+    flags: { rd: true },
+    questions: [{ name: "scrambled.eggs", type: TYPE.A, class: CLASS.IN }],
+    additionals: [{ name: "", type: TYPE.OPT, class: 4096, ttl: 0, rdata: Buffer.alloc(0) }],
+  });
+  const response = decodeMessage(await dns.handle(withEdns));
+  assert.ok(
+    response.additionals.some((r) => r.type === TYPE.OPT),
+    "an answer without OPT tells the client we do not speak EDNS",
+  );
+  await dns.close();
+});
+
+test("the same answers come back over UDP and over TCP", async () => {
+  const dns = harness({ names: { "scrambled.eggs": {} }, zone: { "example.com": CLEARNET_V4 } });
+  const ports = await dns.listen();
+  assert.equal(ports.udp, ports.tcp, "both transports must answer on the same port");
+
+  const overUdp = await new Promise((resolve, reject) => {
+    const socket = dgram.createSocket("udp4");
+    socket.on("message", (msg) => {
+      socket.close();
+      resolve(decodeMessage(msg));
+    });
+    socket.on("error", reject);
+    socket.send(query("scrambled.eggs"), ports.udp, "127.0.0.1");
+  });
+  assert.deepEqual(addresses(overUdp), [GATEWAY_V4]);
+
+  const overTcp = await new Promise((resolve, reject) => {
+    const socket = net.connect({ host: "127.0.0.1", port: ports.tcp });
+    let buffered = Buffer.alloc(0);
+    socket.on("error", reject);
+    socket.on("connect", () => {
+      const payload = query("example.com");
+      const framed = Buffer.alloc(2 + payload.length);
+      framed.writeUInt16BE(payload.length, 0);
+      payload.copy(framed, 2);
+      socket.write(framed);
+    });
+    socket.on("data", (chunk) => {
+      buffered = Buffer.concat([buffered, chunk]);
+      if (buffered.length < 2 || buffered.length < 2 + buffered.readUInt16BE(0)) return;
+      socket.destroy();
+      resolve(decodeMessage(buffered.subarray(2, 2 + buffered.readUInt16BE(0))));
+    });
+  });
+  assert.deepEqual(addresses(overTcp), [CLEARNET_V4]);
+
+  await dns.close();
+});
+
+test("upstream specs are parsed the way people write them", () => {
+  assert.deepEqual(parseUpstreams("8.8.8.8,1.1.1.1"), [
+    { host: "8.8.8.8", port: 53 },
+    { host: "1.1.1.1", port: 53 },
+  ]);
+  assert.deepEqual(parseUpstreams("9.9.9.9:5353"), [{ host: "9.9.9.9", port: 5353 }]);
+  assert.deepEqual(parseUpstreams("[2001:4860:4860::8888]:53"), [{ host: "2001:4860:4860::8888", port: 53 }]);
+  assert.deepEqual(parseUpstreams("2001:4860:4860::8888"), [{ host: "2001:4860:4860::8888", port: 53 }]);
+  // Nothing configured still has to resolve the internet.
+  assert.deepEqual(parseUpstreams(""), [
+    { host: "8.8.8.8", port: 53 },
+    { host: "1.1.1.1", port: 53 },
+  ]);
+});
+
+test("the registry is asked once for a name, however many clients ask us", async () => {
+  let calls = 0;
+  const registry = createRegistryClient({
+    base: "http://registry.test",
+    fetchImpl: async (url) => {
+      calls++;
+      const name = new URL(url).searchParams.get("name");
+      return new Response(JSON.stringify({ name, resolved: name, registered: true }), { status: 200 });
+    },
+  });
+
+  const [a, b] = await Promise.all([registry.lookup("scrambled.eggs"), registry.lookup("scrambled.eggs")]);
+  assert.equal(a.registered, true);
+  assert.equal(b.registered, true);
+  await registry.lookup("scrambled.eggs");
+  assert.equal(calls, 1, "coalesced in flight, then cached");
+});

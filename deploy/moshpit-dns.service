@@ -1,0 +1,50 @@
+# Moshpit resolver as a systemd unit, for running it straight on a VPS.
+#
+#   sudo cp deploy/moshpit-dns.service /etc/systemd/system/
+#   sudo cp -r lib/dns scripts/moshpit-dns.ts package.json /opt/moshpit-dns/
+#   sudo systemctl enable --now moshpit-dns
+#
+# Ubuntu and Debian run systemd-resolved on 127.0.0.53:53, which does not
+# conflict with binding 0.0.0.0:53 on most setups — but if the bind fails,
+# `DNSStubListener=no` in /etc/systemd/resolved.conf is the fix.
+
+[Unit]
+Description=Moshpit DNS resolver (.moshpit + clearnet)
+Documentation=https://github.com/moshcoder/moshcoding/blob/master/docs/moshpit-dns.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/moshpit-dns
+ExecStart=/usr/local/bin/bun run scripts/moshpit-dns.ts
+Restart=always
+RestartSec=2
+
+Environment=MOSHPIT_DNS_PORT=53
+Environment=MOSHPIT_DNS_HTTP_PORT=8053
+# Put anything else — mode, registry, gateway pins — in this file rather than
+# in the unit, so changing it does not need a daemon-reload.
+EnvironmentFile=-/etc/moshpit-dns.env
+
+# A resolver on the public internet is a target and a reflector. It gets the
+# one capability it needs and nothing else.
+DynamicUser=yes
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
