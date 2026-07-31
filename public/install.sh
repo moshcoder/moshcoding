@@ -25,7 +25,7 @@
 # Override env vars:
 #   MOSHCODE_HOME=/path     install dir     (default: $HOME/.moshcode)
 #   MOSHCODE_BIN=/path/dir  wrapper bin dir (default: $HOME/.local/bin)
-#   MOSHCODE_REF=ref        git ref         (default: main)
+#   MOSHCODE_REF=ref        git ref         (default: latest release, else main)
 #   MOSHCODE_USE_SYSTEM_NODE=1  keep an existing system Node 20+ instead of
 #                               installing the current LTS through mise
 #
@@ -34,8 +34,9 @@
 set -eu
 
 GH_REPO="moshcoder/moshcode"
-MOSHCODE_REF="${MOSHCODE_REF:-main}"
-TARBALL_URL="https://codeload.github.com/$GH_REPO/tar.gz/$MOSHCODE_REF"
+# Empty means "resolve at install time" — see resolve_ref. An explicit
+# MOSHCODE_REF still pins whatever the caller asks for (tag OR branch).
+MOSHCODE_REF="${MOSHCODE_REF:-}"
 INSTALL_URL="https://moshcoding.com/install.sh"
 
 # ---------------------------------------------------------------------------
@@ -149,6 +150,27 @@ ensure_bun() {
     fi
 }
 
+# Which ref to install. An explicit MOSHCODE_REF wins (pin a tag, or track a
+# branch). Otherwise: the latest published release tag.
+#
+# This used to hardcode `main`, so every install and `update` shipped whatever
+# happened to be sitting on the branch — unreviewed merges included — and a
+# freshly cut release tag changed nothing about what users got. Releases are
+# the thing we test and announce, so they're what installs should track.
+#
+# The API needs no auth for a public repo, but it can be rate-limited, blocked,
+# or simply have no release yet — any of which falls back to main rather than
+# failing the install. `|| true` keeps `set -e` from aborting on a failed curl
+# or a grep that matches nothing.
+resolve_ref() {
+    if [ -n "${MOSHCODE_REF:-}" ]; then printf '%s' "$MOSHCODE_REF"; return 0; fi
+    _tag="$(curl -fsSL "https://api.github.com/repos/$GH_REPO/releases/latest" 2>/dev/null \
+        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        | head -1)" || _tag=''
+    if [ -n "${_tag:-}" ]; then printf '%s' "$_tag"; else printf '%s' main; fi
+    unset _tag
+}
+
 # ---------------------------------------------------------------------------
 # install the CLI from GitHub (no npm — moshcode is dependency-free ESM)
 # ---------------------------------------------------------------------------
@@ -156,6 +178,8 @@ install_cli() {
     for _t in curl tar node; do
         command -v "$_t" >/dev/null 2>&1 || fail "$_t is required but not found"
     done
+    MOSHCODE_REF="$(resolve_ref)"
+    TARBALL_URL="https://codeload.github.com/$GH_REPO/tar.gz/$MOSHCODE_REF"
     _tmp="$(mktemp -d 2>/dev/null || printf '%s' "$MOSHCODE_HOME/.tmp.$$")"
     mkdir -p "$_tmp"
     info "fetching moshcode ($GH_REPO@$MOSHCODE_REF) from GitHub"
