@@ -274,6 +274,31 @@ async function initSchema(): Promise<void> {
     )
   `);
 
+  // Key pins, at TLD granularity. `.eggs` publishes the keys that names under
+  // it may present, so a client that resolved `scrambled.eggs` knows what to
+  // expect without the registry ever having to know that `scrambled` exists.
+  //
+  // `kind` keeps the transports apart. A `tls` pin covers a certificate's
+  // SubjectPublicKeyInfo (moshpit-proxy); an `mtp` pin covers an ML-DSA-65
+  // identity (moshpit-transport). Both are SHA-256 over an SPKI, so as strings
+  // they are indistinguishable — nothing but this column stops a client from
+  // being handed the wrong one and failing with no idea why.
+  //
+  // Several rows per (tld, kind) on purpose: a key cannot rotate without a
+  // window in which the old and the new one are both published.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS moshpit_tld_pins (
+      tld        TEXT NOT NULL,
+      pin        TEXT NOT NULL,
+      kind       TEXT NOT NULL CHECK (kind IN ('tls','mtp')),
+      note       TEXT,
+      account_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (tld, pin)
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_moshpit_tld_pins ON moshpit_tld_pins (tld, kind)`);
+
   // Append-only. No UPDATE or DELETE is ever issued against this table: "who
   // claimed .eggs first" has to stay answerable after the fact, including when
   // the answer is inconvenient.

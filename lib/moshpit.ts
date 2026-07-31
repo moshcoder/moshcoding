@@ -317,3 +317,184 @@ export async function clearExempt(opts: {
   });
   return { ok: true };
 }
+
+// ---- key pins --------------------------------------------------------------
+//
+// A TLD publishes the keys that names under it are allowed to present. Pinning
+// at this granularity rather than per name follows from how the namespace is
+// actually held: you claim `.eggs`, not `scrambled.eggs`, so the registry has
+// no row for an individual name to hang a key on and would have to invent one.
+//
+// The trade is honest and worth stating. Every name under a TLD shares a key,
+// so the operator of `.eggs` can impersonate any name under it — which they
+// could do anyway, since they own the namespace and decide where its names
+// point. What this does not give you is isolation *between* names under one
+// TLD, which would need a per-name registry and a rotation story for each.
+
+export type PinKind = "tls" | "mtp";
+export const PIN_KINDS: readonly PinKind[] = ["tls", "mtp"];
+
+export type MoshpitPin = {
+  tld: string;
+  pin: string;
+  kind: PinKind;
+  note: string | null;
+  created_at: string;
+};
+
+export type PinResult = { ok: boolean; error?: string; taken?: boolean };
+
+/**
+ * A pin is SHA-256 over a SubjectPublicKeyInfo, base64 — always 32 bytes, so
+ * always 44 characters ending in one '='. Checked rather than trusted because
+ * a malformed pin is indistinguishable from a key that simply never matches:
+ * the connection fails, and nothing anywhere says why.
+ */
+export function isPin(value: unknown): value is string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(value)) return false;
+  return Buffer.from(value, "base64").length === 32;
+}
+
+export function normalizePinKind(value: unknown): PinKind | null {
+  const kind = String(value ?? "").trim().toLowerCase();
+  return (PIN_KINDS as readonly string[]).includes(kind) ? (kind as PinKind) : null;
+}
+
+export async function listPins(tld: string, kind?: PinKind | null): Promise<MoshpitPin[]> {
+  await ensureSchema();
+  const normalized = normalizeTld(tld);
+  if (!normalized) return [];
+
+  const r = await db().execute(
+    kind
+      ? {
+          sql: `SELECT tld, pin, kind, note, created_at FROM moshpit_tld_pins
+                WHERE tld = ? AND kind = ? ORDER BY created_at DESC`,
+          args: [normalized, kind],
+        }
+      : {
+          sql: `SELECT tld, pin, kind, note, created_at FROM moshpit_tld_pins
+                WHERE tld = ? ORDER BY kind, created_at DESC`,
+          args: [normalized],
+        },
+  );
+  return r.rows as unknown as MoshpitPin[];
+}
+
+export type PinsForName = {
+  name: string;
+  /** Where the name actually points; pins come from this TLD, not the typed one. */
+  resolved: string;
+  tld: string;
+  pins: MoshpitPin[];
+};
+
+/**
+ * The pins a client should accept for `scrambled.eggs`.
+ *
+ * Aliases are followed first. When `.agentic` points at `.agent`, a client
+ * asking about `foo.agentic` is going to connect to whatever serves
+ * `foo.agent`, so the keys that matter are `.agent`'s. Answering with
+ * `.agentic`'s pins would refuse every working connection.
+ */
+export async function pinsForName(input: string, kind?: PinKind | null): Promise<PinsForName | null> {
+  const resolution = await resolveMoshpitName(input);
+  if (!resolution) return null;
+
+  // An unregistered TLD is not a Moshpit name, and saying so matters. Without
+  // this check `example.com` parses as label `example` under TLD `com`, nobody
+  // holds `.com`, and the caller is told "registered, no key published" about
+  // a clearnet name it should have been told to leave alone. The two answers
+  // are cached differently by clients and mean different things.
+  if (!resolution.registered) return null;
+
+  const parsed = parseMoshpitName(resolution.resolved);
+  if (!parsed) return null;
+
+  return {
+    name: resolution.name,
+    resolved: resolution.resolved,
+    tld: parsed.tld,
+    pins: await listPins(parsed.tld, kind),
+  };
+}
+
+export async function addPin(opts: {
+  tld: string;
+  pin: string;
+  kind: unknown;
+  note?: unknown;
+  accountId: string;
+}): Promise<PinResult> {
+  await ensureSchema();
+  const tld = normalizeTld(opts.tld);
+  if (!tld) return { ok: false, error: "not a valid TLD" };
+  if (!isPin(opts.pin)) {
+    return { ok: false, error: "pin must be base64 SHA-256 over a SubjectPublicKeyInfo (44 chars)" };
+  }
+  const kind = normalizePinKind(opts.kind);
+  if (!kind) return { ok: false, error: `kind must be one of ${PIN_KINDS.join(", ")}` };
+
+  const owner = await getTld(tld);
+  if (!owner) return { ok: false, error: `.${tld} is not registered` };
+  if (owner.account_id !== opts.accountId) return { ok: false, error: `you do not own .${tld}` };
+
+  const note = typeof opts.note === "string" && opts.note.trim() ? opts.note.trim().slice(0, 200) : null;
+
+  // A pin already present under a different kind is a mistake worth naming.
+  // Silently ignoring it would leave the operator convinced they published an
+  // `mtp` key while clients keep being told it is `tls`.
+  const existing = await db().execute({
+    sql: `SELECT kind FROM moshpit_tld_pins WHERE tld = ? AND pin = ?`,
+    args: [tld, opts.pin],
+  });
+  const priorKind = (existing.rows[0] as unknown as { kind: PinKind } | undefined)?.kind;
+  if (priorKind && priorKind !== kind) {
+    return { ok: false, error: `that pin is already published for .${tld} as ${priorKind}`, taken: true };
+  }
+  if (priorKind === kind) return { ok: true };
+
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_pins (tld, pin, kind, note, account_id) VALUES (?,?,?,?,?)`,
+    args: [tld, opts.pin, kind, note, opts.accountId],
+  });
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_log (tld, account_id, action) VALUES (?,?,?)`,
+    args: [tld, opts.accountId, `pin:add:${kind}:${opts.pin}`],
+  });
+  return { ok: true };
+}
+
+/**
+ * Withdraw a key.
+ *
+ * Removing the last pin of a kind is allowed. It means "no key published",
+ * which clients treat as a refusal rather than as permission — so this is how
+ * an operator takes a compromised key out of service, and it must not be
+ * blocked on the grounds that it breaks connections. Breaking them is the point.
+ */
+export async function removePin(opts: {
+  tld: string;
+  pin: string;
+  accountId: string;
+}): Promise<PinResult> {
+  await ensureSchema();
+  const tld = normalizeTld(opts.tld);
+  if (!tld) return { ok: false, error: "not a valid TLD" };
+
+  const owner = await getTld(tld);
+  if (!owner) return { ok: false, error: `.${tld} is not registered` };
+  if (owner.account_id !== opts.accountId) return { ok: false, error: `you do not own .${tld}` };
+
+  const r = await db().execute({
+    sql: `DELETE FROM moshpit_tld_pins WHERE tld = ? AND pin = ?`,
+    args: [tld, opts.pin],
+  });
+  if (!r.rowsAffected) return { ok: false, error: "that pin is not published for this TLD" };
+
+  await db().execute({
+    sql: `INSERT INTO moshpit_tld_log (tld, account_id, action) VALUES (?,?,?)`,
+    args: [tld, opts.accountId, `pin:remove:${opts.pin}`],
+  });
+  return { ok: true };
+}
