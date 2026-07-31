@@ -488,3 +488,20 @@ dialog.qhelp::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(2px)
   font-family: var(--mono); background: var(--panel);
   border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
 }
+
+/* ---- /pit/dns — resolver setup (PRD 0004 R1) ---- */
+.dns-addrs { list-style: none; display: flex; flex-wrap: wrap; gap: 12px; padding: 0; margin: 0 0 18px; }
+.dns-addrs li {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-left: 3px solid var(--acid); border-radius: 8px; padding: 12px 16px;
+}
+/* The address is the thing people copy, so it gets the size and the contrast. */
+.dns-ip { font-family: var(--mono); font-size: 1.25rem; color: var(--acid); user-select: all; }
+.dns-host { font-family: var(--mono); font-size: .8rem; color: var(--ash); }
+.dns-pre {
+  background: #0b0d0a; border: 1px solid var(--line); border-left: 3px solid var(--acid);
+  border-radius: 8px; padding: 14px 16px; overflow-x: auto; max-width: 62ch;
+  font-family: var(--mono); font-size: .88rem; line-height: 1.7; color: var(--bone);
+}
+.dns-pre code { font-family: inherit; background: none; padding: 0; }

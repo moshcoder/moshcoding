@@ -69,9 +69,14 @@ export default async function PitPage() {
         <p className="tag">// reaching a .moshpit address</p>
         <p className="pit-lede">
           These names live outside the traditional DNS root, so a normal browser doesn&apos;t
-          know where to look. This page is the way in until the resolver ships: names are
-          registered and looked up here over ordinary HTTPS, and{" "}
-          <code>pit.moshcode.sh</code> stays a working entry point for anyone without it.
+          know where to look. Two ways in.{" "}
+          <a className="acid" href="/pit/dns">
+            Point your device at the Moshpit resolvers
+          </a>{" "}
+          and <code>.anything</code> resolves everywhere on that device — one setting, no
+          install, and the rest of the internet keeps working. Or skip it: names are
+          registered and looked up here over ordinary HTTPS, and <code>pit.moshcode.sh</code>{" "}
+          stays a working entry point for anyone who has changed nothing.
         </p>
         <p className="pit-lede pit-dim">
           The browser extension that resolves <code>.anything</code> natively is not out yet.

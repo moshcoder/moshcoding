@@ -98,9 +98,20 @@ dns2.pit    A     <resolver 2 address>
 dns         A     <load balancer or resolver 1>    ; DoH: https://dns.pit.moshcode.sh/dns-query
 ```
 
-These have to be **explicit** records. The wildcard that serves the HTTP
-gateway (`*.pit.moshcode.sh`) would otherwise answer for `dns1.pit` and point
-people's resolvers at a web server; an exact name always beats a wildcard.
+These have to be **explicit** records, and they have to stay explicit. There is
+no `*.pit.moshcode.sh` wildcard today — only `pit.moshcode.sh` itself resolves,
+to Railway — but PRD `0004` R1 calls for one, and the day it is added it would
+otherwise answer for `dns1.pit` and point people's resolvers at a web server.
+An exact name always beats a wildcard, so publishing these first is what makes
+that safe.
+
+Then tell the site about them, so `pit.moshcode.sh/dns` shows real addresses
+instead of "not published yet":
+
+```
+MOSHPIT_DNS_RESOLVERS=dns1.pit.moshcode.sh=<address>,dns2.pit.moshcode.sh=<address>
+MOSHPIT_DOH_URL=https://dns.pit.moshcode.sh/dns-query
+```
 
 Then set `MOSHPIT_GATEWAY_HOST=pit.moshcode.sh` (the default) and the resolvers
 follow the gateway wherever it moves, because they look its address up through
@@ -111,6 +122,11 @@ a resolver on a Raspberry Pi for one household. Nothing here privileges
 `pit.moshcode.sh`; it is a convenience default, which is PRD `0004` R8.
 
 ## Using one
+
+The user-facing version of this section is a page on the site itself —
+`pit.moshcode.sh/dns` (`app/pit/dns/page.tsx`) — which reads the addresses from
+`MOSHPIT_DNS_RESOLVERS` and walks through the same steps without asking anyone
+to read a repo.
 
 **macOS** — System Settings → Network → your connection → Details → DNS, and
 add `dns1.pit.moshcode.sh`'s address as the first server.
