@@ -680,6 +680,38 @@ export async function renameProject(id: string, name: string): Promise<void> {
   await db().execute({ sql: `UPDATE projects SET name = ? WHERE id = ?`, args: [name, id] });
 }
 
+/** Pause or resume one project webhook without discarding its signing secret. */
+export async function setProjectWebhookActive(
+  id: string,
+  projectId: string,
+  active: boolean,
+): Promise<boolean> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `UPDATE webhook_endpoints SET active = ? WHERE id = ? AND project_id = ?`,
+    args: [active ? 1 : 0, id, projectId],
+  });
+  return Number(r.rowsAffected || 0) > 0;
+}
+
+/** Delete one project webhook and its delivery history. */
+export async function deleteProjectWebhook(id: string, projectId: string): Promise<boolean> {
+  await ensureSchema();
+  const d = db();
+  const owned = await d.execute({
+    sql: `SELECT 1 FROM webhook_endpoints WHERE id = ? AND project_id = ? LIMIT 1`,
+    args: [id, projectId],
+  });
+  if (!owned.rows.length) return false;
+
+  await d.execute({ sql: `DELETE FROM webhook_deliveries WHERE endpoint_id = ?`, args: [id] });
+  const r = await d.execute({
+    sql: `DELETE FROM webhook_endpoints WHERE id = ? AND project_id = ?`,
+    args: [id, projectId],
+  });
+  return Number(r.rowsAffected || 0) > 0;
+}
+
 /** Deletes a project and its webhook config/history (SQLite has no cascade). */
 export async function deleteProject(id: string): Promise<void> {
   await ensureSchema();

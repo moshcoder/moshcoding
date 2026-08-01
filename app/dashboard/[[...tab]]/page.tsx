@@ -1183,6 +1183,7 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
   const [url, setUrl] = useState("");
   const [provider, setProvider] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
+  const [busyEndpoint, setBusyEndpoint] = useState<string | null>(null);
 
   const formatEvents = (raw: unknown) => {
     try {
@@ -1214,6 +1215,24 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
     } catch (e: any) { onError(e.message); }
   };
 
+  const mutateEndpoint = async (endpointId: string, method: "PATCH" | "DELETE", body?: { active: boolean }) => {
+    setBusyEndpoint(endpointId);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/webhooks/${endpointId}`, {
+        method,
+        headers: body ? { "content-type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update webhook endpoint.");
+      await load();
+    } catch (e: any) {
+      onError(e.message || "Could not update webhook endpoint.");
+    } finally {
+      setBusyEndpoint(null);
+    }
+  };
+
   return (
     <section className="card2">
       <h2>Webhooks — {project.name}</h2>
@@ -1222,7 +1241,29 @@ function ProjectWebhooks({ project, onError }: { project: Project; onError: (m: 
         <button className="btn2" disabled={!url.trim()} onClick={() => { post(`/api/projects/${project.id}/webhooks`, { url: url.trim() }, "Outbound"); setUrl(""); }}>Add outbound</button>
         <button className="btn2 ghost" onClick={() => post(`/api/projects/${project.id}/webhooks/test`, {}, "").then(() => onError("Test event dispatched."))}>Send test</button>
       </div>
-      <ul className="list">{out.map((e) => <li key={e.id}><span>↗ {e.url}</span><span className="muted">{formatEvents(e.events)}</span></li>)}
+      <ul className="list">{out.map((e) => <li key={e.id}>
+        <span>↗ {e.url} <span className="muted">· {e.active ? "active" : "paused"} · {formatEvents(e.events)}</span></span>
+        <span className="row-actions">
+          <button
+            className="btn2 ghost"
+            disabled={busyEndpoint === e.id}
+            onClick={() => mutateEndpoint(e.id, "PATCH", { active: !e.active })}
+          >
+            {e.active ? "Pause" : "Resume"}
+          </button>
+          <button
+            className="btn2 ghost"
+            disabled={busyEndpoint === e.id}
+            onClick={() => {
+              if (window.confirm(`Delete webhook endpoint ${e.url}?`)) {
+                void mutateEndpoint(e.id, "DELETE");
+              }
+            }}
+          >
+            Delete
+          </button>
+        </span>
+      </li>)}
         {out.length === 0 && <li className="muted">No outbound endpoints yet.</li>}</ul>
       <div className="row" style={{ marginTop: 14 }}>
         <input className="inp" placeholder="inbound provider (e.g. github)" value={provider} onChange={(e) => setProvider(e.target.value)} />
