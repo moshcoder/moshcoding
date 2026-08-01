@@ -18,3 +18,17 @@ export function filterSignupsByStatus<T extends { verified: boolean }>(
     status === "verified" ? signup.verified : !signup.verified,
   );
 }
+
+export function filterSignupsByQuery<T extends { email: string; ref?: string | null }>(
+  signups: T[],
+  query: string,
+): T[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return signups;
+
+  return signups.filter(
+    (signup) =>
+      signup.email.toLowerCase().includes(normalizedQuery) ||
+      signup.ref?.toLowerCase().includes(normalizedQuery),
+  );
+}

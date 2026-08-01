@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import { findOrCreateAccountByEmail, ownsParkedDomain, listDomainSignups } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
-import { filterSignupsByStatus, parseWaitlistStatus } from "@/lib/waitlist-filter";
+import {
+  filterSignupsByQuery,
+  filterSignupsByStatus,
+  parseWaitlistStatus,
+} from "@/lib/waitlist-filter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +20,7 @@ async function accountId(req: NextRequest): Promise<string | null> {
   return null;
 }
 
-// GET /api/waitlist/manage?dn=<domain>[&format=csv][&status=verified|pending]
+// GET /api/waitlist/manage?dn=<domain>[&format=csv][&status=verified|pending][&q=<query>]
 // — the signups for one of the caller's parked domains. Each domain's
 // waitlist is separate (signups.dn).
 export async function GET(req: NextRequest) {
@@ -29,9 +33,13 @@ export async function GET(req: NextRequest) {
   }
   const status = parseWaitlistStatus(req.nextUrl.searchParams.get("status"));
   if (!status) return NextResponse.json({ error: "invalid waitlist status" }, { status: 400 });
+  const query = req.nextUrl.searchParams.get("q") || "";
 
   const allSignups = await listDomainSignups(dn);
-  const signups = filterSignupsByStatus(allSignups, status);
+  const signups = filterSignupsByQuery(
+    filterSignupsByStatus(allSignups, status),
+    query,
+  );
 
   if (req.nextUrl.searchParams.get("format") === "csv") {
     const rows = [["email", "verified", "ref", "created_at"]].concat(
@@ -45,5 +53,12 @@ export async function GET(req: NextRequest) {
       },
     });
   }
-  return NextResponse.json({ dn, count: signups.length, total: allSignups.length, status, signups });
+  return NextResponse.json({
+    dn,
+    count: signups.length,
+    total: allSignups.length,
+    status,
+    query,
+    signups,
+  });
 }
