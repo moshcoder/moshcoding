@@ -14,7 +14,8 @@ function frameAncestors(req: NextRequest): string {
   // its own pages. New parked domains work without hand-editing FRAME_ANCESTORS.
   const isDomain = (d: string) =>
     d.length <= 253 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(d);
-  for (const key of ["dn", "bid"]) {
+  // "name" is the same domain arriving via /parking?name=<self>.
+  for (const key of ["dn", "bid", "name"]) {
     const d = (req.nextUrl.searchParams.get(key) || "").trim().toLowerCase();
     if (isDomain(d)) allow.push(`https://${d}`, `https://www.${d}`);
   }
@@ -39,9 +40,11 @@ export function middleware(req: NextRequest) {
   // — the first ref a visitor arrives with sticks). Signup/waitlist read it so
   // the referral is credited whenever they convert within the window.
   // Normally ?ref=<code> is its own param. But Porkbun param-forwarding can glue
-  // it onto the ?dn= value ("dn=moshscript.com?ref=abc"), so recover it there too.
+  // it onto the ?dn= value ("dn=moshscript.com?ref=abc"), so recover it there too
+  // — and from ?name=, which carries the same domain on /parking.
   const sp = req.nextUrl.searchParams;
-  const rawRef = sp.get("ref") ?? sp.get("dn")?.match(/[?&]ref=([A-Za-z0-9_-]+)/)?.[1] ?? null;
+  const glued = (key: string) => sp.get(key)?.match(/[?&]ref=([A-Za-z0-9_-]+)/)?.[1];
+  const rawRef = sp.get("ref") ?? glued("dn") ?? glued("name") ?? null;
   if (rawRef && !req.cookies.get("mc_ref")?.value) {
     const ref = rawRef.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
     if (ref) {
