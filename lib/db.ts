@@ -909,6 +909,16 @@ export async function deleteDomainWebhook(id: string, dn: string): Promise<boole
   return Number(r.rowsAffected || 0) > 0;
 }
 
+/** Pause or resume one outbound target without discarding its signing secret. */
+export async function setDomainWebhookActive(id: string, dn: string, active: boolean): Promise<boolean> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `UPDATE domain_webhooks SET active = ? WHERE id = ? AND dn = ?`,
+    args: [active ? 1 : 0, id, dn.toLowerCase()],
+  });
+  return Number(r.rowsAffected || 0) > 0;
+}
+
 /** Stores an inbound event, keeping only the most recent 200 per domain. */
 export async function recordInboundEvent(opts: { dn: string; source?: string | null; eventType?: string | null; payload: string }): Promise<void> {
   await ensureSchema();

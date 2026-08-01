@@ -7,6 +7,7 @@ import {
   listDomainWebhooks,
   addDomainWebhook,
   deleteDomainWebhook,
+  setDomainWebhookActive,
   listInboundEvents,
   distinctWebhookUrls,
 } from "@/lib/db";
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// POST /api/domain-webhooks — owner: add a target, delete one, or send a test.
+// POST /api/domain-webhooks — owner: add, pause/resume, delete, or test a target.
 export async function POST(req: NextRequest) {
   const accountId = await resolveAccountId(req);
   if (!accountId) return NextResponse.json({ error: "Sign in to manage webhooks." }, { status: 401 });
@@ -72,6 +73,16 @@ export async function POST(req: NextRequest) {
   if (body.action === "delete") {
     const ok = await deleteDomainWebhook(String(body.id || ""), dn);
     return NextResponse.json({ ok }, { status: ok ? 200 : 404 });
+  }
+
+  if (body.action === "setActive") {
+    const id = String(body.id || "");
+    if (!id || typeof body.active !== "boolean") {
+      return NextResponse.json({ error: "Webhook id and active state are required." }, { status: 400 });
+    }
+    const ok = await setDomainWebhookActive(id, dn, body.active);
+    if (!ok) return NextResponse.json({ error: "Webhook target not found." }, { status: 404 });
+    return NextResponse.json({ ok: true, id, active: body.active });
   }
 
   if (body.action === "test") {

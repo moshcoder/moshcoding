@@ -905,6 +905,7 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
           <div className="row"><input className="inp" readOnly value={data.inboundUrl || ""} /><button className="btn2 ghost" onClick={() => copyText(data.inboundUrl || "")}>Copy</button></div>
 
           <h3 className="ed-h">Outbound targets{data.knownUrls?.length ? <span className="muted"> · pre-filled from your project webhooks</span> : null}</h3>
+          <p className="sub">Pause a target to stop deliveries without deleting its signing secret.</p>
           <div className="row">
             <input className="inp" list="known-webhook-urls" placeholder="https://your-app.com/hook  or a Discord/Slack/Zapier URL" value={url} onChange={(e) => setUrl(e.target.value)} />
             {data.knownUrls?.length ? (
@@ -917,9 +918,19 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
             {(!data.webhooks || data.webhooks.length === 0) && <li className="muted">No outbound targets yet.</li>}
             {data.webhooks?.map((w: any) => (
               <li key={w.id}>
-                <span>{w.url} <span className="muted">· secret {String(w.secret).slice(0, 12)}…</span></span>
+                <span>{w.url} <span className="muted">· {w.active ? "active" : "paused"} · secret {String(w.secret).slice(0, 12)}…</span></span>
                 <span className="row-actions">
                   <button className="btn2 ghost" onClick={() => copyText(w.secret)}>Copy secret</button>
+                  <button
+                    className="btn2 ghost"
+                    disabled={busy}
+                    onClick={() => act(
+                      { action: "setActive", id: w.id, active: !w.active },
+                      w.active ? "Webhook paused." : "Webhook resumed.",
+                    )}
+                  >
+                    {w.active ? "Pause" : "Resume"}
+                  </button>
                   <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "delete", id: w.id }, "Removed.")}>Delete</button>
                 </span>
               </li>
