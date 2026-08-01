@@ -1,6 +1,5 @@
-import type { Metadata } from "next";
-import { toTenantParams } from "@/lib/parking";
-import TenantPage, { generateMetadata as tenantMetadata } from "../page";
+import { permanentRedirect } from "next/navigation";
+import { parkingTarget } from "@/lib/parking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,27 +7,19 @@ export const dynamic = "force-dynamic";
 type SearchParams = Record<string, string | undefined>;
 
 /**
- * /parking?name=<domain> — the URL registrar parking pages and forwarding rules
- * point at. It renders the tenant page in place rather than redirecting to
- * /?dn=<domain>, so the link a registrar already holds keeps working and masked
- * forwarding never sees a hop. All other params (?ref, ?brand, ?social_*, …)
- * pass straight through to the same renderer as /.
+ * /parking?name=<name> — where a Moshpit name lands when it has not been
+ * pointed anywhere yet.
+ *
+ * It sends the visitor to the Pit's page for that name rather than rendering a
+ * parked-domain card here. A 308 (not a 307) because the name's home really is
+ * `/n/<name>` and always will be: crawlers follow it and index the Pit page,
+ * instead of holding on to a moshcoding.com URL that only ever bounces.
  */
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}): Promise<Metadata> {
-  const sp = (await searchParams) || {};
-  return tenantMetadata({ searchParams: Promise.resolve(toTenantParams(sp)) });
-}
-
 export default async function Parking({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
   const sp = (await searchParams) || {};
-  // No usable name → the tenant renderer falls back to <Landing />, not a 404.
-  return TenantPage({ searchParams: Promise.resolve(toTenantParams(sp)) });
+  permanentRedirect(parkingTarget(sp));
 }
