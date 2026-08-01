@@ -27,5 +27,10 @@ export function parkingTarget(sp: ParkingParams): string {
   // Nothing usable to look up — the Pit's front door beats a 404 for someone
   // who just typed a name at us.
   if (!name) return `${PIT_BASE_URL}/pit`;
+  return pitNameUrl(name);
+}
+
+/** The Pit's page for a name. Callers pass something safeDomain() has cleared. */
+export function pitNameUrl(name: string): string {
   return `${PIT_BASE_URL}/n/${encodeURIComponent(name)}`;
 }
