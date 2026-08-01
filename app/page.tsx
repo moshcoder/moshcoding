@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { configFor, safeDomain } from "@/lib/config";
+import { isMoshpitName } from "@/lib/moshpit-tlds";
+import { pitNameUrl } from "@/lib/parking";
 import { getTenantConfig } from "@/lib/db";
 import Landing from "@/components/Landing";
 import Tenant from "@/components/Tenant";
@@ -68,6 +71,13 @@ export default async function Page({
   // ?dn wins (iframe/masked path); else the branded Host (direct custom domain).
   const dn = safeDomain(sp.dn) || (await hostTenantDn());
   if (!dn) return <Landing />;
+
+  // A Moshpit name that DNS parked here belongs to the Pit, not to this app's
+  // parked-domain card. Temporary, not permanent: the owner can point the name
+  // at a real target at any moment, and a 308 cached in a browser would keep
+  // sending them here long after this app stopped being the answer. Ordinary
+  // parked clearnet domains do not match and render exactly as before.
+  if (await isMoshpitName(dn)) redirect(pitNameUrl(dn));
 
   // A paid/provisioned domain has a tenants row that overrides the defaults.
   const tenantOverride = await getTenantConfig(dn).catch(() => null);
