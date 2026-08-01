@@ -2,7 +2,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
-import { filterSignupsByStatus, type WaitlistStatus } from "@/lib/waitlist-filter";
+import {
+  filterSignupsByQuery,
+  filterSignupsByStatus,
+  type WaitlistStatus,
+} from "@/lib/waitlist-filter";
 import MoshpitTlds from "@/components/MoshpitTlds";
 
 // Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
@@ -759,6 +763,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
   const [active, setActive] = useState<string | null>(null);
   const [signups, setSignups] = useState<any[] | null>(null);
   const [status, setStatus] = useState<WaitlistStatus>("all");
+  const [query, setQuery] = useState("");
 
   const load = async (dn: string) => {
     setActive(dn); setSignups(null);
@@ -783,11 +788,15 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
     return <section className="card2"><h2>Waitlist</h2><p className="sub">No parked domains yet — claim one on the “Domains” tab and its waitlist shows up here.</p></section>;
   }
 
-  const filtered = signups ? filterSignupsByStatus(signups, status) : null;
-  const verifiedCount = signups?.filter((signup) => signup.verified).length ?? 0;
-  const pendingCount = signups ? signups.length - verifiedCount : 0;
+  const matchingSignups = signups ? filterSignupsByQuery(signups, query) : null;
+  const filtered = matchingSignups
+    ? filterSignupsByStatus(matchingSignups, status)
+    : null;
+  const hasFilters = status !== "all" || query.trim() !== "";
+  const verifiedCount = matchingSignups?.filter((signup) => signup.verified).length ?? 0;
+  const pendingCount = matchingSignups ? matchingSignups.length - verifiedCount : 0;
   const filters: { value: WaitlistStatus; label: string; count: number }[] = [
-    { value: "all", label: "All", count: signups?.length ?? 0 },
+    { value: "all", label: "All", count: matchingSignups?.length ?? 0 },
     { value: "verified", label: "Confirmed", count: verifiedCount },
     { value: "pending", label: "Pending", count: pendingCount },
   ];
@@ -807,9 +816,24 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
         <>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <h3 className="ed-h">{active} — {filtered ? filtered.length : "…"} signups</h3>
-            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv&status=${status}`}>
-              {status === "all" ? "Export CSV" : "Export filtered CSV"}
+            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv&status=${status}&q=${encodeURIComponent(query)}`}>
+              {hasFilters ? "Export filtered CSV" : "Export CSV"}
             </a>
+          </div>
+          <div className="row" style={{ alignItems: "center" }}>
+            <input
+              className="inp"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by email or referral code"
+              aria-label="Search waitlist signups"
+            />
+            {query && (
+              <button className="btn2 ghost" type="button" onClick={() => setQuery("")}>
+                Clear
+              </button>
+            )}
           </div>
           <div className="tabs" role="group" aria-label="Filter waitlist signups">
             {filters.map((filter) => (
@@ -828,7 +852,11 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
             {signups === null && <li className="muted">Loading…</li>}
             {filtered && filtered.length === 0 && (
               <li className="muted">
-                {signups?.length ? `No ${status === "verified" ? "confirmed" : status} signups.` : "No signups yet — share your page."}
+                {signups?.length
+                  ? hasFilters
+                    ? "No signups match the current filters."
+                    : "No signups found."
+                  : "No signups yet — share your page."}
               </li>
             )}
             {filtered && filtered.map((s) => (
