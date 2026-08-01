@@ -10,7 +10,16 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const MEDIA_DIR = path.join(DATA_DIR, "media");
 
 /** Cap per upload. Reels are short; keep them small enough to stream cheaply. */
-export const MAX_UPLOAD_BYTES = Number(process.env.MEDIA_MAX_BYTES || 100 * 1024 * 1024); // 100 MB
+export const DEFAULT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+
+export function parseMaxUploadBytes(value: string | undefined): number {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) return DEFAULT_MAX_UPLOAD_BYTES;
+  const bytes = Number(trimmed);
+  return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : DEFAULT_MAX_UPLOAD_BYTES;
+}
+
+export const MAX_UPLOAD_BYTES = parseMaxUploadBytes(process.env.MEDIA_MAX_BYTES);
 
 /** Accepted video mime types → file extension. mp4 is the primary target. */
 export const ALLOWED_TYPES: Record<string, string> = {
