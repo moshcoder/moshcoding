@@ -14,6 +14,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const az = await authorizeProject(u.sub, projectId, "webhook.manage");
   if (!az.ok) return bad(az.error, az.status);
 
-  const results = await dispatchEvent(projectId, "ping", { message: "🤘 moshcoding test event", at: new Date().toISOString() });
+  const results = await dispatchEvent(
+    projectId,
+    "ping",
+    { message: "🤘 moshcoding test event", at: new Date().toISOString() },
+    { bypassEventFilter: true },
+  );
   return NextResponse.json({ dispatched: results.length, results });
 }

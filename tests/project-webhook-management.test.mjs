@@ -64,6 +64,38 @@ test("project webhook targets pause and resume without losing configuration", as
   }
 });
 
+test("test deliveries reach active endpoints regardless of event subscriptions", async () => {
+  const id = "endpoint-subscription-test";
+  await db().execute({
+    sql: `INSERT INTO webhook_endpoints (id, project_id, url, secret, events)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [id, "project-subscription-test", "https://hooks.example.test/subscription-test", "whsec_subscription_test", '["build.finished"]'],
+  });
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (...args) => {
+    calls.push(args);
+    return new Response(null, { status: 204 });
+  };
+
+  try {
+    const filtered = await dispatchEvent("project-subscription-test", "ping", { ok: true });
+    assert.equal(filtered.length, 0);
+    assert.equal(calls.length, 0);
+
+    const testDeliveries = await dispatchEvent(
+      "project-subscription-test",
+      "ping",
+      { ok: true },
+      { bypassEventFilter: true },
+    );
+    assert.equal(testDeliveries.length, 1);
+    assert.equal(calls.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("project scoping prevents cross-project changes", async () => {
   const id = await insertEndpoint("project-owner", "scoped");
 
