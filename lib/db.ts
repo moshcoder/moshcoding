@@ -712,6 +712,39 @@ export async function deleteProjectWebhook(id: string, projectId: string): Promi
   return Number(r.rowsAffected || 0) > 0;
 }
 
+/** Pause or resume one inbound receiver without rotating its shared secret. */
+export async function setProjectInboundWebhookActive(
+  id: string,
+  projectId: string,
+  active: boolean,
+): Promise<boolean> {
+  await ensureSchema();
+  const r = await db().execute({
+    sql: `UPDATE inbound_webhooks SET active = ? WHERE id = ? AND project_id = ?`,
+    args: [active ? 1 : 0, id, projectId],
+  });
+  return Number(r.rowsAffected || 0) > 0;
+}
+
+/** Delete one inbound receiver and its idempotency/event history. */
+export async function deleteProjectInboundWebhook(id: string, projectId: string): Promise<boolean> {
+  await ensureSchema();
+  const [, receiverDelete] = await db().batch([
+    {
+      sql: `DELETE FROM inbound_events
+            WHERE inbound_id IN (
+              SELECT id FROM inbound_webhooks WHERE id = ? AND project_id = ?
+            )`,
+      args: [id, projectId],
+    },
+    {
+      sql: `DELETE FROM inbound_webhooks WHERE id = ? AND project_id = ?`,
+      args: [id, projectId],
+    },
+  ], "write");
+  return Number(receiverDelete.rowsAffected || 0) > 0;
+}
+
 /** Deletes a project and its webhook config/history (SQLite has no cascade). */
 export async function deleteProject(id: string): Promise<void> {
   await ensureSchema();
