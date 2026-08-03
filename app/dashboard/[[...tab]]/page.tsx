@@ -8,12 +8,22 @@ import {
   filterSignupsByStatus,
   type WaitlistStatus,
 } from "@/lib/waitlist-filter";
-import MoshpitTlds from "@/components/MoshpitTlds";
-
 // Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
 // bare /dashboard). Keep this in sync with the tab buttons below.
-const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns", "tlds"] as const;
+const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns"] as const;
 type Tab = (typeof TABS)[number];
+
+/**
+ * Where the Moshpit namespace is actually operated.
+ *
+ * The endings and names live in the moshcode registry — `pit.moshcode.sh` is
+ * what every resolver, the DNS bridge and TronBrowser ask, and this app's copy
+ * of the tables was never the one being served. The dashboard tab that edited
+ * them from here was therefore a second, worse control panel over data it did
+ * not own, and it is gone; `/dashboard/tlds` sends you to the real one rather
+ * than silently opening a different tab.
+ */
+const PIT_RECORDS_URL = "https://app.moshcode.sh/pit/records";
 
 type Org = { id: string; name: string };
 type Team = { id: string; name: string; org_id: string; org_name: string; role: string };
@@ -47,6 +57,13 @@ export default function Dashboard() {
   const params = useParams();
   const slug = Array.isArray(params?.tab) ? params.tab[0] : (params?.tab as string | undefined);
   const [tab, setTabState] = useState<Tab>((TABS as readonly string[]).includes(slug || "") ? (slug as Tab) : "page");
+
+  // /dashboard/tlds was a real, bookmarkable URL. Falling through to the
+  // Domains tab would look like the bookmark rotting; this says where the
+  // namespace went.
+  useEffect(() => {
+    if (slug === "tlds" && typeof window !== "undefined") window.location.replace(PIT_RECORDS_URL);
+  }, [slug]);
 
   // Switch tab and reflect it in the address bar (replaceState keeps in-page state
   // and avoids a server round-trip; the bare /dashboard is the "page" tab).
@@ -116,12 +133,10 @@ export default function Dashboard() {
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
         <button className={`tab${tab === "dns" ? " on" : ""}`} onClick={() => setTab("dns")}>Custom domain</button>
-        <button className={`tab${tab === "tlds" ? " on" : ""}`} onClick={() => setTab("tlds")}>Moshpit TLDs</button>
+        <a className="tab" href={PIT_RECORDS_URL}>Moshpit DNS ↗</a>
       </div>
 
-      {tab === "tlds" ? (
-        <MoshpitTlds />
-      ) : tab === "dns" ? (
+      {tab === "dns" ? (
         <DomainsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "affiliates" ? (
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
