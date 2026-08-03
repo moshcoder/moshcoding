@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+import { formatStoredWebhookPayload } from "@/lib/webhook-payload";
 import {
   filterSignupsByQuery,
   filterSignupsByStatus,
@@ -968,12 +969,30 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
           <h3 className="ed-h">Recent inbound events ({data.events?.length || 0})</h3>
           <ul className="list">
             {(!data.events || data.events.length === 0) && <li className="muted">Nothing received yet.</li>}
-            {data.events?.map((e: any) => (
-              <li key={e.id}>
-                <span><b>{e.event_type || "event"}</b> <span className="muted">{e.source ? `· ${String(e.source).slice(0, 40)}` : ""}</span></span>
-                <span className="muted">{e.created_at}</span>
-              </li>
-            ))}
+            {data.events?.map((e: any) => {
+              const payload = formatStoredWebhookPayload(e.payload);
+              return (
+                <li key={e.id} style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <span><b>{e.event_type || "event"}</b> <span className="muted">{e.source ? `· ${String(e.source).slice(0, 40)}` : ""}</span></span>
+                  <span className="muted">{e.created_at}</span>
+                  <details style={{ flexBasis: "100%" }}>
+                    <summary style={{ cursor: "pointer" }}>Inspect payload</summary>
+                    <pre style={{ margin: "8px 0", overflowX: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{payload}</pre>
+                    <button
+                      type="button"
+                      className="btn2 ghost"
+                      onClick={async () => {
+                        const copied = await copyText(payload);
+                        if (copied) onOk("Payload copied. 🤘");
+                        else onError("Copy failed — select the payload and copy it manually.");
+                      }}
+                    >
+                      Copy payload
+                    </button>
+                  </details>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
