@@ -94,12 +94,44 @@ test("without recursion we answer only what we are authoritative for", () => {
   assert.equal(planQuery({ question: question("example.com"), rd: false }).action, "refuse");
 });
 
-test("NODATA from clearnet counts as no answer, so the registry still gets a turn", () => {
+test("clearnet owns a name it has heard of, whatever it was asked for", () => {
+  const nodata = (type) => ({ flags: { rcode: RCODE.NOERROR }, answers: [], questions: [question("thing.dev", type)] });
+
   assert.equal(clearnetAnswered({ flags: { rcode: RCODE.NXDOMAIN }, answers: [] }), false);
-  assert.equal(clearnetAnswered({ flags: { rcode: RCODE.NOERROR }, answers: [] }), false);
   assert.equal(clearnetAnswered({ flags: { rcode: RCODE.NOERROR }, answers: [{ type: TYPE.A }] }), true);
   // A broken upstream is not permission to substitute our own namespace.
   assert.equal(clearnetAnswered({ flags: { rcode: RCODE.SERVFAIL }, answers: [] }), true);
+
+  // NODATA says the name exists and has no record of THIS type. A browser asks
+  // A, AAAA and HTTPS for every hostname and most real domains answer the last
+  // two with nothing — so reading those as "clearnet came up empty" put a
+  // registry round trip in front of most of the web, and handed the gateway's
+  // address to anyone whose domain the registry happened to hold.
+  assert.equal(clearnetAnswered(nodata(TYPE.AAAA)), true);
+  assert.equal(clearnetAnswered(nodata(TYPE.HTTPS)), true);
+  assert.equal(clearnetAnswered(nodata(TYPE.MX)), true);
+
+  // The one case kept: an address query with no address, e.g. a clearnet name
+  // parked behind an MX. Rare, so it costs a lookup almost nowhere.
+  assert.equal(clearnetAnswered(nodata(TYPE.A)), false);
+
+  // An answer we cannot attribute to a question is left to clearnet.
+  assert.equal(clearnetAnswered({ flags: { rcode: RCODE.NOERROR }, answers: [] }), true);
+});
+
+test("a country-code second level is where names start, not a name", () => {
+  // The last two labels of `www.bbc.co.uk` are `co.uk`. Reading that as a
+  // Moshpit name meant a registry lookup on every UK page load, and in moshpit
+  // mode it would have handed every site under `.co.uk` to whoever held it.
+  for (const name of ["bbc.co.uk", "www.bbc.co.uk", "abc.net.au", "asahi.co.jp", "gov.uk.com.br"]) {
+    const candidate = moshpitCandidate(name);
+    assert.notEqual(candidate?.name, "co.uk", `${name} must not resolve to the co.uk suffix`);
+  }
+  assert.equal(moshpitCandidate("bbc.co.uk"), null);
+  assert.equal(moshpitCandidate("www.bbc.co.uk"), null);
+  assert.equal(moshpitCandidate("abc.net.au"), null);
+  // A real Moshpit name that merely ends in a ccTLD-looking label still works.
+  assert.equal(moshpitCandidate("scrambled.eggs")?.name, "scrambled.eggs");
 });
 
 test("a registered name answers with the gateway's addresses", () => {

@@ -38,6 +38,43 @@ export const NEVER_MOSHPIT = new Set([
   "localhost", "local", "onion", "test", "invalid", "example", "home", "internal", "lan",
 ]);
 
+/**
+ * Two-label endings that are registry boundaries in the legacy root, not names.
+ *
+ * The Moshpit namespace is one level deep, so the *last two labels* of a query
+ * are the name — which is right for `www.scrambled.eggs` and wrong for
+ * `www.bbc.co.uk`, where the last two labels are `co.uk`. That read the BBC as
+ * a name in this namespace: a registry lookup on every UK page load, and in
+ * `moshpit` mode, whoever registered `co.uk` would have intercepted every site
+ * under it.
+ *
+ * A bundled list goes stale — the same objection `roots.ts` raises — but this
+ * one ages far better than a gTLD list: ccTLD second levels change on the order
+ * of years, and being wrong costs one needless lookup rather than a wrong
+ * answer. It is not the full Public Suffix List, just the endings a browser is
+ * likely to meet.
+ */
+export const PUBLIC_SUFFIXES = new Set([
+  "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk", "sch.uk", "ltd.uk", "plc.uk",
+  "com.au", "net.au", "org.au", "edu.au", "gov.au", "id.au",
+  "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp", "lg.jp",
+  "co.nz", "net.nz", "org.nz", "govt.nz", "ac.nz",
+  "co.za", "org.za", "web.za", "gov.za", "ac.za",
+  "com.br", "net.br", "org.br", "gov.br", "edu.br",
+  "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn",
+  "co.in", "net.in", "org.in", "gov.in", "ac.in", "edu.in",
+  "co.kr", "or.kr", "ne.kr", "go.kr", "re.kr",
+  "com.mx", "org.mx", "gob.mx", "edu.mx",
+  "com.tr", "net.tr", "org.tr", "gov.tr", "edu.tr",
+  "com.tw", "org.tw", "gov.tw", "edu.tw",
+  "com.sg", "net.sg", "org.sg", "gov.sg", "edu.sg",
+  "com.hk", "org.hk", "gov.hk", "edu.hk", "idv.hk",
+  "com.ar", "com.co", "com.pe", "com.uy", "com.ec", "com.ve",
+  "com.ua", "com.pl", "com.ru", "com.es", "com.pt", "com.gr", "com.cy",
+  "com.vn", "com.my", "com.ph", "com.pk", "com.bd", "com.np",
+  "com.eg", "com.sa", "com.ng", "com.gh", "com.kw", "com.qa",
+]);
+
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**
@@ -75,6 +112,8 @@ export function moshpitCandidate(qname: string): { name: string; label: string; 
   if (parts.every((part) => /^\d+$/.test(part))) return null;
   if (tld.length < 2) return null;
   if (!LABEL.test(tld) || !LABEL.test(label)) return null;
+  // `co.uk` is where names start, not a name. See PUBLIC_SUFFIXES.
+  if (PUBLIC_SUFFIXES.has(`${label}.${tld}`)) return null;
   // Underscore-prefixed service labels (`_dmarc`, `_acme-challenge`) are legal
   // in DNS but never a registry label, so they can only be a prefix.
   const prefix = parts.slice(0, parts.length - 2).join(".");
@@ -149,11 +188,30 @@ export function planQuery(opts: {
 /**
  * Did the upstream answer actually resolve the name?
  *
- * NXDOMAIN is the obvious no. NOERROR with an empty answer section (NODATA)
- * is the subtle one: the name exists in clearnet but has no address, e.g. a
- * parked domain with only an MX. Treating that as "clearnet answered" would
- * strand a Moshpit name behind a clearnet placeholder, so an address query
- * with no addresses counts as no answer.
+ * NXDOMAIN is the obvious no: clearnet has never heard of the name, so the
+ * registry gets a turn. NOERROR with records is the obvious yes.
+ *
+ * NOERROR with an empty answer section (NODATA) is the subtle one, and reading
+ * it as "clearnet has nothing" — which this used to do, for every query type —
+ * is what made the ordinary web slow.
+ *
+ * NODATA is a *positive* statement about the name: the zone exists and was
+ * asked, it simply holds no record of this type. It is also the common case,
+ * not the rare one. A browser asks A, AAAA and HTTPS (type 65) for every
+ * hostname it touches, and the vast majority of real domains have no AAAA and
+ * no HTTPS record — so two queries in three came back NODATA, were read as
+ * "clearnet came up empty", and paid for a registry round trip plus a root
+ * probe before the browser got its answer. Worse than slow: where the registry
+ * happened to hold that name, a legitimate domain's AAAA was answered with the
+ * *gateway's* address, and a dual-stack client went to the pit instead of the
+ * site it asked for.
+ *
+ * So NODATA now counts as an answer, with one exception kept deliberately: an
+ * `A` query with no addresses. That is the case the original note was about — a
+ * name that exists in clearnet with only an MX behind it, where backfilling
+ * from the registry is the useful thing to do — and it is genuinely rare, so it
+ * costs a lookup almost nowhere. Every other type is left to clearnet, which is
+ * the one that actually knows.
  */
 export function clearnetAnswered(response: {
   flags?: { rcode?: number };
@@ -163,5 +221,10 @@ export function clearnetAnswered(response: {
   const rcode = response?.flags?.rcode ?? RCODE.NOERROR;
   if (rcode === RCODE.NXDOMAIN) return false;
   if (rcode !== RCODE.NOERROR) return true; // SERVFAIL and friends: not ours to override
-  return (response?.answers?.length ?? 0) > 0;
+  if ((response?.answers?.length ?? 0) > 0) return true;
+
+  // NODATA. Only an address query with no address leaves room for a backfill;
+  // an unknown question type is left alone, because inventing an answer for a
+  // type we did not understand is how a resolver breaks things it never saw.
+  return response?.questions?.[0]?.type !== TYPE.A;
 }

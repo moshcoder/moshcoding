@@ -16,6 +16,28 @@ export type RateLimiter = {
   size(): number;
 };
 
+/**
+ * The local machine, which is never rate limited.
+ *
+ * The limit above prices an attack that needs a forged source address, and
+ * loopback cannot be forged from off the box: the kernel drops a 127/8 source
+ * arriving on a real interface. So there is nothing to price here.
+ *
+ * There is a great deal to lose, though, the moment a machine points its own
+ * resolver at this (`DNS=127.0.0.1:5354`). Every query on that machine then
+ * arrives from one address and shares a single bucket sized for one client, so
+ * the sustained rate becomes the whole machine's DNS budget. A page load bursts
+ * well past it, and over-budget queries are dropped rather than refused —
+ * correct against a spoofing victim, and the worst possible answer locally,
+ * where it means the stub waits out a full timeout, retries, and the page loads
+ * with subresources that never resolved.
+ */
+const LOOPBACK = /^(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+
+export function isLoopback(remote: string | undefined): boolean {
+  return LOOPBACK.test(String(remote ?? "").trim().toLowerCase());
+}
+
 export function createRateLimiter(options: {
   /** Sustained queries per second, per client. */
   qps?: number;

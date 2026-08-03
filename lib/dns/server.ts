@@ -12,7 +12,7 @@ import { moshpitAnswer, type GatewayAddresses } from "./answers";
 import type { GatewayResolver } from "./gateway";
 import { clearnetAnswered, planQuery, type ResolveMode } from "./policy";
 import type { RootProbe } from "./roots";
-import type { RateLimiter } from "./ratelimit";
+import { isLoopback, type RateLimiter } from "./ratelimit";
 import type { RegistryClient } from "./registry";
 import type { Forwarder } from "./upstream";
 import {
@@ -404,6 +404,8 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
 
   function allowed(remote: string | undefined): boolean {
     if (!options.rateLimiter || !remote) return true;
+    // The machine's own queries are never throttled — see isLoopback.
+    if (isLoopback(remote)) return true;
     if (options.rateLimiter.allow(remote)) return true;
     stats.dropped++;
     return false;
