@@ -55,6 +55,7 @@ function stubRegistry(names, options = {}) {
           resolved: entry?.resolved ?? name,
           registered: Boolean(entry),
           aliased: Boolean(entry?.resolved && entry.resolved !== name),
+          target: entry?.target ?? null,
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
@@ -285,4 +286,48 @@ test("the registry is asked once for a name, however many clients ask us", async
   assert.equal(b.registered, true);
   await registry.lookup("scrambled.eggs");
   assert.equal(calls, 1, "coalesced in flight, then cached");
+});
+
+// A name pointed at a hostname is the case `seo.rank` hit in production: the
+// answer was a CNAME to dev.profullstack.com and nothing else, and every stub
+// client read that as "no such host".
+test("a name pointed at a hostname answers with the address, not just the CNAME", async () => {
+  const dns = harness({
+    names: { "seo.rank": { target: "dev.profullstack.com" } },
+    zone: { "dev.profullstack.com": CLEARNET_V4 },
+  });
+  const response = decodeMessage(await dns.handle(query("seo.rank")));
+
+  assert.equal(response.flags.rcode, RCODE.NOERROR);
+  // The CNAME still goes out — a `dig` should show where the name points.
+  assert.ok(
+    response.answers.some((r) => r.type === TYPE.CNAME && r.target === "dev.profullstack.com"),
+    "the CNAME is what makes the indirection visible",
+  );
+  // ...but the address has to be there too. This resolver sets RA=1 and talks
+  // to stub clients directly; a stub reads the answer section for an address
+  // and gives up when there is none, so a bare CNAME is a failed lookup.
+  assert.deepEqual(addresses(response), [CLEARNET_V4], "a stub client needs the leaf address");
+  await dns.close();
+});
+
+test("an unreachable upstream still yields the CNAME rather than nothing", async () => {
+  // Chasing is best-effort. Failing closed here would turn one upstream
+  // hiccup into "this name does not exist".
+  const dns = harness({ names: { "seo.rank": { target: "dev.profullstack.com" } }, zone: {} });
+  const response = decodeMessage(await dns.handle(query("seo.rank")));
+
+  assert.equal(response.flags.rcode, RCODE.NOERROR);
+  assert.ok(response.answers.some((r) => r.type === TYPE.CNAME), "the CNAME survives an upstream failure");
+  await dns.close();
+});
+
+test("a name pointed at a literal address does not get a spurious lookup", async () => {
+  // Nothing to chase: the address is already the answer.
+  const dns = harness({ names: { "pinned.rank": { target: "203.0.113.55" } } });
+  const response = decodeMessage(await dns.handle(query("pinned.rank")));
+
+  assert.deepEqual(addresses(response), ["203.0.113.55"]);
+  assert.ok(!response.answers.some((r) => r.type === TYPE.CNAME), "no CNAME when the target is an address");
+  await dns.close();
 });

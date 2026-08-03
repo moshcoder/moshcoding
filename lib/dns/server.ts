@@ -24,6 +24,7 @@ import {
   setMessageId,
   udpPayloadSize,
   type Message,
+  type Question,
 } from "./wire";
 
 export type ServerStats = {
@@ -164,6 +165,59 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
     return setMessageId(response, clientId);
   }
 
+  /**
+   * Finish a CNAME chain the client will not finish itself.
+   *
+   * A name pointed at a hostname answers with a CNAME, which is correct for an
+   * authoritative server: its answer gets completed by whichever recursive
+   * resolver asked. This resolver is not in that position. It sets RA=1 and is
+   * used *directly* by stub clients — browsers, curl, and every machine
+   * pointed at the DoH endpoint — and a stub does not chase CNAMEs. It reads
+   * the address out of the answer section, finds none, and reports failure.
+   *
+   * So a bare CNAME reads to all of them as "no such host": `curl` says
+   * "Could not resolve host: seo.rank" for a name that resolves perfectly.
+   *
+   * Best-effort on purpose. If the upstream lookup fails we still return the
+   * CNAME rather than nothing — a resolver that chases well is better than the
+   * one we had, and a resolver that fails closed on an upstream hiccup is
+   * worse.
+   */
+  async function completeCnameChain(message: Message, question: Question): Promise<void> {
+    if (question.type !== TYPE.A && question.type !== TYPE.AAAA) return;
+    // Already has what was asked for — a name pointed at a literal address.
+    if (message.answers.some((r) => r.type === question.type)) return;
+
+    const cname = message.answers.find((r) => r.type === TYPE.CNAME && r.target);
+    if (!cname?.target) return;
+
+    try {
+      const probe = encodeMessage({
+        id: randomId(),
+        flags: { qr: false, opcode: 0, aa: false, tc: false, rd: true, ra: false, z: false, ad: false, cd: false, rcode: 0 },
+        questions: [{ name: cname.target, type: question.type, class: CLASS.IN }],
+      });
+      const resolved = decodeMessage(await forwarder.query(probe));
+      for (const record of resolved.answers) {
+        // Leaves only. Relaying the upstream's own CNAMEs would rebuild the
+        // same dead end one link further along.
+        if (record.type !== question.type || !record.address) continue;
+        message.answers.push({
+          name: cname.target,
+          type: question.type,
+          class: CLASS.IN,
+          // Never outlive the registry's own TTL: the owner can repoint this
+          // name at any moment, and an address cached past that is the one
+          // failure nobody can debug from outside.
+          ttl: Math.min(ttl, record.ttl ?? ttl),
+          address: record.address,
+        });
+      }
+    } catch {
+      // Keep the CNAME. See above.
+    }
+  }
+
   async function moshpitResponse(query: Message, name: string): Promise<{ buffer: Buffer; message: Message } | null> {
     const lookup = await registry.lookup(name);
     if (!lookup?.registered) return null;
@@ -187,6 +241,7 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
       ttl,
     });
     if (!message) return null;
+    await completeCnameChain(message, query.questions[0]);
     message.additionals = echoOpt(query);
     return { buffer: encodeMessage(message), message };
   }
