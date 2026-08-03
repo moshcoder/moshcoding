@@ -47,8 +47,11 @@ export function createRateLimiter(options: {
   maxClients?: number;
   now?: () => number;
 } = {}): RateLimiter {
-  const qps = options.qps ?? 50;
-  const burst = options.burst ?? 100;
+  // Sized for a browser rather than against one — a client here is an address,
+  // and behind one address is a laptop with tabs open, or a whole office. See
+  // the note on DEFAULT_QPS in scripts/moshpit-dns.ts.
+  const qps = options.qps ?? 200;
+  const burst = options.burst ?? 600;
   const maxClients = options.maxClients ?? 50_000;
   const now = options.now ?? Date.now;
 

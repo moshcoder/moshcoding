@@ -200,6 +200,24 @@ test("a client over its rate limit is dropped rather than answered", async () =>
   assert.equal(limiter.allow("192.0.2.2"), true, "a different client has its own budget");
 });
 
+test("a remote browser's page load fits inside one client's budget", () => {
+  // The limit prices reflection, not browsing. A client is an address, and
+  // behind one address is a laptop with tabs open: A, AAAA and HTTPS on every
+  // hostname a page touches clears 100 queries without trying. At the old
+  // 50/100 the excess was dropped in silence, which is a page that finishes
+  // with subresources that never resolved.
+  const limiter = createRateLimiter();
+  let served = 0;
+  for (let i = 0; i < 400; i++) if (limiter.allow("203.0.113.9")) served++;
+  assert.equal(served, 400, "a burst the size of a real page load is answered in full");
+
+  // Still a bound, though — an address cannot ask without limit.
+  const capped = createRateLimiter();
+  let allowed = 0;
+  for (let i = 0; i < 5000; i++) if (capped.allow("203.0.113.10")) allowed++;
+  assert.ok(allowed < 5000, "the budget is still finite");
+});
+
 test("the machine's own queries are never rate limited", () => {
   // Point a box's resolver at this and every query on it arrives from one
   // address. Under a per-client limit that made the whole machine share one
