@@ -28,6 +28,15 @@
 #   MOSHCODE_REF=ref        git ref         (default: latest release, else main)
 #   MOSHCODE_USE_SYSTEM_NODE=1  keep an existing system Node 20+ instead of
 #                               installing the current LTS through mise
+#   MOSHCODE_ALLOW_ROOT=1   install as root anyway (see below)
+#
+# Do not install this with sudo. Every path below is derived from $HOME, which
+# sudo sets to /root — so the CLI lands in /root/.moshcode and the wrapper in
+# /root/.local/bin, mode 0700, unreadable by the user who ran the command. It
+# is worse than a no-op: link_system_bin then points /usr/local/bin/moshcode at
+# that unreadable wrapper, so `moshcode` resolves for everyone and runs for
+# nobody. The install still prints "Install complete", and the failure only
+# shows up later as "permission denied". This script refuses that case.
 #
 # Re-running this script updates an existing install in place.
 
@@ -85,6 +94,38 @@ info() { printf '%s==>%s %s\n' "$BLUE" "$RESET" "$*"; }
 ok()   { printf '%s ✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s !%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
 fail() { printf '%s ✗%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
+
+# `sudo curl … | sh` installs for the wrong user and says nothing. HOME is
+# /root, so MOSHCODE_HOME and MOSHCODE_BIN land in a 0700 directory, and
+# link_system_bin then publishes /usr/local/bin/moshcode -> that unreadable
+# wrapper. The result resolves on PATH for every user and executes for none:
+#
+#     $ moshcode install secrets
+#     zsh: permission denied: moshcode
+#
+# A bare root shell (containers, CI images, root-only VPS) has no SUDO_USER and
+# is a legitimate way to install, so only the escalated-from-a-real-user case is
+# refused; MOSHCODE_ALLOW_ROOT overrides even that.
+check_not_sudo() {
+    [ "$(id -u 2>/dev/null || echo 0)" = "0" ] || return 0
+    [ -n "${SUDO_USER:-}" ] || return 0
+    if [ -n "${MOSHCODE_ALLOW_ROOT:-}" ]; then
+        info "MOSHCODE_ALLOW_ROOT set — installing as root into $MOSHCODE_HOME"
+        return 0
+    fi
+    fail "don't install moshcode with sudo.
+
+  Every path here comes from \$HOME, which sudo has set to $HOME, so this
+  would install for root and leave $SUDO_USER with a moshcode on PATH that
+  it cannot execute.
+
+  Run it as yourself instead:
+      curl -fsSL $INSTALL_URL | sh
+
+  For a deliberate system-wide install, name the paths explicitly:
+      sudo MOSHCODE_ALLOW_ROOT=1 MOSHCODE_HOME=/opt/moshcode \\
+           MOSHCODE_BIN=/usr/local/bin sh -c 'curl -fsSL $INSTALL_URL | sh'"
+}
 
 detect_os() {
     case "$(uname -s)" in
@@ -305,6 +346,7 @@ run_remove() {
 run_install() {
     printf '\n%smoshcoding — moshcode installer%s\n' "$GREEN" "$RESET"
     printf '  home: %s\n  bin:  %s\n\n' "$MOSHCODE_HOME" "$MOSHCODE_BIN"
+    check_not_sudo
     detect_os; ok "OS: $OS"
     mkdir -p "$MOSHCODE_HOME" "$MOSHCODE_BIN"
     ensure_node
