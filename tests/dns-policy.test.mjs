@@ -26,9 +26,31 @@ test("names the legacy root already owns are never sent to the registry", () => 
 });
 
 test("things that only look like names are not names", () => {
-  for (const name of ["", "localhost", "203.0.113.7", "eggs", "scrambled.e", "-bad.eggs", "scrambled.123"]) {
+  for (const name of ["", "localhost", "203.0.113.7", "eggs", "scrambled.e", "-bad.eggs"]) {
     assert.equal(moshpitCandidate(name), null, `${name} should not be a Moshpit candidate`);
   }
+});
+
+test("a numeric ending is a real ending", () => {
+  // `.2600` is registered, and the resolver used to refuse every name under
+  // it — the registry sold endings that could not resolve. A numeric ending
+  // under a real label can only ever be a name.
+  const candidate = moshpitCandidate("alt.2600");
+  assert.equal(candidate?.name, "alt.2600");
+  assert.equal(candidate?.tld, "2600");
+  assert.equal(candidate?.label, "alt");
+  assert.equal(moshpitCandidate("www.alt.2600")?.name, "alt.2600", "subdomains of it still work");
+});
+
+test("an address is still never read as a name", () => {
+  // This is what the old blanket rule was protecting, and it has to keep
+  // holding: if `10.0.0.1` were a candidate, whoever registered `.1` could
+  // intercept traffic meant for a machine.
+  for (const address of ["10.0.0.1", "203.0.113.7", "192.168", "1.2.3.4", "8.8.8.8", "12.34"]) {
+    assert.equal(moshpitCandidate(address), null, `${address} is an address, not a name`);
+  }
+  // Colons are IPv6, rejected earlier and for the same reason.
+  assert.equal(moshpitCandidate("2604:a880:400:d1:0:4:c3fe:1"), null);
 });
 
 test("clearnet mode forwards first and lets the registry backfill", () => {

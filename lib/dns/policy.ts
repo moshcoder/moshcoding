@@ -62,7 +62,17 @@ export function moshpitCandidate(qname: string): { name: string; label: string; 
   const tld = parts[parts.length - 1];
   const label = parts[parts.length - 2];
   if (NEVER_MOSHPIT.has(tld)) return null;
-  if (/^\d+$/.test(tld)) return null;
+  // A name whose every label is a number is address-shaped, and reading
+  // `10.0.0.1` or `192.168` as a name in this namespace would let anyone who
+  // registered `.1` intercept traffic meant for a machine. A *numeric ending*
+  // under a real label is a different thing: `.2600` is a registered ending,
+  // and `alt.2600` can only ever be a name. Rejecting the whole class here
+  // meant the registry sold endings the resolver then refused to resolve.
+  //
+  // The registry still decides whether the name exists. This is only the shape
+  // filter, and it should exclude what can never be a name rather than what
+  // merely looks unusual.
+  if (parts.every((part) => /^\d+$/.test(part))) return null;
   if (tld.length < 2) return null;
   if (!LABEL.test(tld) || !LABEL.test(label)) return null;
   // Underscore-prefixed service labels (`_dmarc`, `_acme-challenge`) are legal
