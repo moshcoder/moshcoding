@@ -50,8 +50,13 @@ export function eventEnvelope(type: string, data: unknown, projectId: string) {
   return { id, type, data, created_at: new Date().toISOString(), project_id: projectId };
 }
 
-/** Dispatch an event to every active endpoint of a project that subscribes to it. */
-export async function dispatchEvent(projectId: string, type: string, data: unknown) {
+/** Dispatch an event to active project endpoints, normally honoring subscriptions. */
+export async function dispatchEvent(
+  projectId: string,
+  type: string,
+  data: unknown,
+  opts: { bypassEventFilter?: boolean } = {},
+) {
   const { rows } = await db().execute({
     sql: `SELECT id, url, secret, events FROM webhook_endpoints WHERE project_id = ? AND active = 1`,
     args: [projectId],
@@ -60,7 +65,7 @@ export async function dispatchEvent(projectId: string, type: string, data: unkno
   for (const ep of rows as any[]) {
     let events: string[] = ["*"];
     try { events = JSON.parse(ep.events); } catch { /* default */ }
-    if (!events.includes("*") && !events.includes(type)) continue;
+    if (!opts.bypassEventFilter && !events.includes("*") && !events.includes(type)) continue;
     results.push(await deliverToEndpoint(String(ep.id), String(ep.url), String(ep.secret), type, data, projectId));
   }
   return results;
