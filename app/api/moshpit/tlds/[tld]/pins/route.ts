@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveAccountId, bad, unauthorized } from "@/lib/api";
+import { resolveAccountIdOrToken, bad, unauthorized } from "@/lib/api";
 import { PIN_KINDS, addPin, listPins, normalizePinKind, removePin } from "@/lib/moshpit";
 
 export const runtime = "nodejs";
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ tld: string
  * would break every client between the write and the deploy.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ tld: string }> }) {
-  const accountId = await resolveAccountId(req);
+  const accountId = await resolveAccountIdOrToken(req);
   if (!accountId) return unauthorized();
   const { tld } = await ctx.params;
 
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ tld: strin
 
 /** DELETE /api/moshpit/tlds/:tld/pins?pin=... — withdraw a key. */
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ tld: string }> }) {
-  const accountId = await resolveAccountId(req);
+  const accountId = await resolveAccountIdOrToken(req);
   if (!accountId) return unauthorized();
   const { tld } = await ctx.params;
 
