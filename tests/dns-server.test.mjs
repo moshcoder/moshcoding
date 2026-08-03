@@ -8,7 +8,7 @@ import net from "node:net";
 import test from "node:test";
 
 import { createGatewayResolver } from "../lib/dns/gateway.ts";
-import { createRateLimiter } from "../lib/dns/ratelimit.ts";
+import { createRateLimiter, isLoopback } from "../lib/dns/ratelimit.ts";
 import { createRegistryClient } from "../lib/dns/registry.ts";
 import { createDnsServer } from "../lib/dns/server.ts";
 import { createForwarder, parseUpstreams } from "../lib/dns/upstream.ts";
@@ -198,6 +198,67 @@ test("a client over its rate limit is dropped rather than answered", async () =>
   assert.equal(limiter.allow("192.0.2.1"), true);
   assert.equal(limiter.allow("192.0.2.1"), false, "the third query in a burst of two is dropped");
   assert.equal(limiter.allow("192.0.2.2"), true, "a different client has its own budget");
+});
+
+test("the machine's own queries are never rate limited", () => {
+  // Point a box's resolver at this and every query on it arrives from one
+  // address. Under a per-client limit that made the whole machine share one
+  // client's budget, and the excess was dropped in silence — a page load's
+  // worth of subresources that simply never resolved.
+  for (const local of ["127.0.0.1", "127.0.0.53", "::1", "::ffff:127.0.0.1"]) {
+    assert.equal(isLoopback(local), true, `${local} is the local machine`);
+  }
+  for (const remote of ["192.0.2.1", "203.0.113.7", "2606:4700::1111", "", undefined]) {
+    assert.equal(isLoopback(remote), false, `${remote} is not loopback and still pays the limit`);
+  }
+});
+
+test("a clearnet name with no AAAA is left to clearnet, not answered from the registry", async () => {
+  // The regression this exists for: a browser asks A, AAAA and HTTPS for every
+  // hostname, and most real domains answer the last two with NODATA. Reading
+  // that as "clearnet came up empty" put a registry round trip in front of most
+  // of the web — and where the registry held the name, it answered a real
+  // domain's AAAA with the *gateway*, sending dual-stack clients to the pit.
+  const forwarder = createForwarder({
+    ask: async (_upstream, payload) => {
+      const q = decodeMessage(payload);
+      const question = q.questions[0];
+      const isA = question.type === TYPE.A;
+      return encodeMessage({
+        id: q.id,
+        flags: { qr: true, rd: true, ra: true, rcode: RCODE.NOERROR },
+        questions: q.questions,
+        // An ordinary dual-stack-less domain: an address, and nothing else.
+        answers: isA
+          ? [{ name: question.name, type: TYPE.A, class: CLASS.IN, ttl: 300, address: CLEARNET_V4 }]
+          : [],
+      });
+    },
+  });
+  const registry = stubRegistry({ "profullstack.ai": {} });
+  const dns = createDnsServer({
+    registry,
+    forwarder,
+    gateway: createGatewayResolver({ host: "pit.moshcode.sh", forwarder, ipv4: [GATEWAY_V4], ipv6: ["2606:4700::1111"] }),
+    mode: "clearnet",
+    ttl: 60,
+    port: 0,
+    address: "127.0.0.1",
+  });
+
+  const v6 = decodeMessage(await dns.handle(query("profullstack.ai", TYPE.AAAA)));
+  assert.deepEqual(addresses(v6, TYPE.AAAA), [], "the gateway's address must not stand in for a real domain's AAAA");
+  assert.equal(v6.flags.aa, false, "clearnet's own NODATA is relayed, not replaced with an authoritative one");
+
+  const https = decodeMessage(await dns.handle(query("profullstack.ai", TYPE.HTTPS)));
+  assert.equal(https.answers.length, 0);
+
+  assert.equal(dns.stats().moshpit, 0, "no Moshpit answer was synthesized");
+  assert.equal(registry.stats().misses, 0, "and the registry was never asked");
+
+  // The A query still resolves through clearnet, as it always did.
+  assert.deepEqual(addresses(decodeMessage(await dns.handle(query("profullstack.ai")))), [CLEARNET_V4]);
+  await dns.close();
 });
 
 test("EDNS is echoed, so clients keep using it", async () => {

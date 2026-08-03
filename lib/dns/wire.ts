@@ -20,6 +20,13 @@ export const TYPE = {
   TXT: 16,
   AAAA: 28,
   OPT: 41,
+  // Not encoded or decoded as records — the resolver only ever relays these —
+  // but named because policy has to reason about them. A browser asks HTTPS
+  // (RFC 9460) for every hostname it navigates to, alongside A and AAAA, and
+  // most domains answer it with nothing. Which of those empty answers mean
+  // "clearnet has no name here" is the whole of `clearnetAnswered`.
+  SVCB: 64,
+  HTTPS: 65,
   ANY: 255,
 } as const;
 
