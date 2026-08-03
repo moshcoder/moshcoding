@@ -312,6 +312,38 @@ async function initSchema(): Promise<void> {
     )
   `);
 
+  // ---- API keys, so something other than a browser can act for an account.
+  //
+  // Every account-scoped endpoint authenticated by session cookie only, which
+  // meant no CLI, script, or CI job could call one. For key pins that was not
+  // an inconvenience but a correctness problem: a name's TLS is unverifiable
+  // until its pin is published, and publishing was a person reading a hash out
+  // of a script and pasting it into a form. Steps like that do not happen, so
+  // most names had no pin.
+  //
+  // Only the hash is stored. A leaked backup of this table cannot be used to
+  // authenticate, and nobody — including whoever runs the registry — can read
+  // a key back out after it is created.
+  //
+  // `prefix` is the first few characters, kept in clear on purpose: it is what
+  // lets a person recognise which key a row refers to when revoking one,
+  // without it being enough to use.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS account_api_keys (
+      id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      account_id TEXT NOT NULL,
+      name       TEXT,
+      token_hash TEXT NOT NULL UNIQUE,
+      prefix     TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used  TEXT,
+      revoked_at TEXT
+    )
+  `);
+  // Lookup is by hash on every authenticated request, so it must not be a scan.
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_account_api_keys_hash ON account_api_keys (token_hash)`);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_account_api_keys_acct ON account_api_keys (account_id)`);
+
   // ---- domain auctions: one per domain, runs FOREVER (no expiry) — the owner
   // collects bids until they accept one. Owner sets an optional reserve (hidden
   // from bidders) and buy-now (a bid >= buy_now auto-wins). Managed on /dashboard.
