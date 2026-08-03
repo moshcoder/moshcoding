@@ -66,6 +66,29 @@ const gateway = createGatewayResolver({
   ipv6: list(env.MOSHPIT_GATEWAY_AAAA),
 });
 
+/**
+ * What one client may ask for, per second and in a burst.
+ *
+ * The limit prices reflection: a forged source address turns our answers into
+ * someone else's inbound traffic, so a client's budget is the most we will ever
+ * send a victim who never asked. It is not meant to price *browsing*.
+ *
+ * At 50/100 it priced browsing anyway. A client here is an address, not a
+ * person, and behind one address is a laptop opening tabs — or a household, or
+ * an office. A single page asks for A, AAAA and HTTPS on every hostname it
+ * touches, so a few tabs clear 100 queries in a burst without trying, and the
+ * excess is dropped rather than refused: nothing comes back, the stub waits out
+ * its timeout, and the page finishes with subresources that never resolved.
+ *
+ * These numbers are still a bound, just one drawn around a browser instead of
+ * inside it. What they let through is ~200 answers/sec to a spoofed victim,
+ * well under 100KB/s and no kind of amplifier — ANY is already refused, which
+ * is what makes the amplification factor small enough for this to be the right
+ * trade.
+ */
+const DEFAULT_QPS = 200;
+const DEFAULT_BURST = 600;
+
 // Off unless asked for: with it on, a name nobody holds under an ending the
 // legacy root does not have resolves to the gateway, which lands the visitor on
 // the pit with the name filled in. That is a funnel, and a funnel is a product
@@ -83,8 +106,8 @@ const dns = createDnsServer({
   address,
   port,
   rateLimiter: createRateLimiter({
-    qps: number(env.MOSHPIT_DNS_QPS, 50),
-    burst: number(env.MOSHPIT_DNS_BURST, 100),
+    qps: number(env.MOSHPIT_DNS_QPS, DEFAULT_QPS),
+    burst: number(env.MOSHPIT_DNS_BURST, DEFAULT_BURST),
   }),
   log: env.MOSHPIT_DNS_LOG === "queries" ? log : () => {},
 });
