@@ -1,5 +1,6 @@
 import { createClient, type Client } from "@libsql/client";
 import { randomBytes } from "node:crypto";
+import type { WaitlistSort } from "./waitlist-filter";
 
 let _db: Client | undefined;
 
@@ -1055,10 +1056,19 @@ export async function listInboundEvents(dn: string, limit = 50): Promise<{ id: s
 }
 
 /** The waitlist for one domain (that the caller owns). */
-export async function listDomainSignups(domain: string, limit = 1000): Promise<{ email: string; verified: boolean; ref: string | null; created_at: string }[]> {
+export async function listDomainSignups(
+  domain: string,
+  limit = 1000,
+  sort: WaitlistSort = "newest",
+): Promise<{ email: string; verified: boolean; ref: string | null; created_at: string }[]> {
   await ensureSchema();
+  const orderBy: Record<WaitlistSort, string> = {
+    newest: "created_at DESC, email COLLATE NOCASE ASC, email ASC",
+    oldest: "created_at ASC, email COLLATE NOCASE ASC, email ASC",
+    email: "email COLLATE NOCASE ASC, email ASC, created_at DESC",
+  };
   const res = await db().execute({
-    sql: `SELECT email, verified_at, ref, created_at FROM signups WHERE dn = ? ORDER BY created_at DESC LIMIT ?`,
+    sql: `SELECT email, verified_at, ref, created_at FROM signups WHERE dn = ? ORDER BY ${orderBy[sort]} LIMIT ?`,
     args: [domain.trim().toLowerCase(), limit],
   });
   return res.rows.map((r) => ({

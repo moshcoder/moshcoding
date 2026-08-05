@@ -5,6 +5,7 @@ import { safeDomain } from "@/lib/config";
 import {
   filterSignupsByQuery,
   filterSignupsByStatus,
+  parseWaitlistSort,
   parseWaitlistStatus,
 } from "@/lib/waitlist-filter";
 
@@ -20,7 +21,8 @@ async function accountId(req: NextRequest): Promise<string | null> {
   return null;
 }
 
-// GET /api/waitlist/manage?dn=<domain>[&format=csv][&status=verified|pending][&q=<query>]
+// GET /api/waitlist/manage?dn=<domain>[&format=csv][&status=verified|pending]
+//     [&q=<query>][&sort=newest|oldest|email]
 // — the signups for one of the caller's parked domains. Each domain's
 // waitlist is separate (signups.dn).
 export async function GET(req: NextRequest) {
@@ -33,9 +35,13 @@ export async function GET(req: NextRequest) {
   }
   const status = parseWaitlistStatus(req.nextUrl.searchParams.get("status"));
   if (!status) return NextResponse.json({ error: "invalid waitlist status" }, { status: 400 });
+  const sort = parseWaitlistSort(req.nextUrl.searchParams.get("sort"));
+  if (!sort) return NextResponse.json({ error: "invalid waitlist sort" }, { status: 400 });
   const query = req.nextUrl.searchParams.get("q") || "";
 
-  const allSignups = await listDomainSignups(dn);
+  // Apply the requested order in SQL before the 1,000-row safety limit. If
+  // this were sorted here, "oldest" would only reorder the newest rows.
+  const allSignups = await listDomainSignups(dn, 1000, sort);
   const signups = filterSignupsByQuery(
     filterSignupsByStatus(allSignups, status),
     query,
@@ -58,6 +64,7 @@ export async function GET(req: NextRequest) {
     count: signups.length,
     total: allSignups.length,
     status,
+    sort,
     query,
     signups,
   });
