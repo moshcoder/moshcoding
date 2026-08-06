@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+import { formatApiKeyTime } from "@/lib/api-key-time";
 import { formatStoredWebhookPayload } from "@/lib/webhook-payload";
 import {
   filterSignupsByQuery,
@@ -11,7 +12,7 @@ import {
 } from "@/lib/waitlist-filter";
 // Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
 // bare /dashboard). Keep this in sync with the tab buttons below.
-const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "affiliates", "dns"] as const;
+const TABS = ["page", "videos", "waitlist", "auctions", "webhooks", "keys", "affiliates", "dns"] as const;
 type Tab = (typeof TABS)[number];
 
 /**
@@ -132,6 +133,7 @@ export default function Dashboard() {
         <button className={`tab${tab === "waitlist" ? " on" : ""}`} onClick={() => setTab("waitlist")}>Waitlist</button>
         <button className={`tab${tab === "auctions" ? " on" : ""}`} onClick={() => setTab("auctions")}>Auctions</button>
         <button className={`tab${tab === "webhooks" ? " on" : ""}`} onClick={() => setTab("webhooks")}>Webhooks</button>
+        <button className={`tab${tab === "keys" ? " on" : ""}`} onClick={() => setTab("keys")}>API keys</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
         <button className={`tab${tab === "dns" ? " on" : ""}`} onClick={() => setTab("dns")}>Custom domain</button>
         <a className="tab" href={PIT_RECORDS_URL}>Moshpit DNS ↗</a>
@@ -143,6 +145,8 @@ export default function Dashboard() {
         <AffiliatesPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "webhooks" ? (
         <DomainWebhooksPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
+      ) : tab === "keys" ? (
+        <ApiKeysPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "auctions" ? (
         <AuctionsPanel onError={(m) => say(m, false)} onOk={(m) => say(m, true)} />
       ) : tab === "videos" ? (
@@ -1230,6 +1234,140 @@ function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk
         ))}
         {(!data.referrals || !data.referrals.length) && <li className="muted">No referrals yet — share your link.</li>}
       </ul>
+    </section>
+  );
+}
+
+type ApiKeyView = {
+  id: string;
+  name: string | null;
+  prefix: string;
+  created_at: string;
+  last_used: string | null;
+  revoked_at: string | null;
+};
+
+function ApiKeysPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [keys, setKeys] = useState<ApiKeyView[] | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [created, setCreated] = useState<{ token: string; note: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async (): Promise<boolean> => {
+    setLoadError(null);
+    setKeys(undefined);
+    try {
+      const data = await api("/api/account/keys");
+      setKeys(data.keys || []);
+      return true;
+    } catch (e: any) {
+      const message = e.message || "Could not load API keys.";
+      setLoadError(message);
+      onError(message);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // Loading is tied to opening the panel; mutations refresh explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const data = await api("/api/account/keys", "POST", { name: name.trim() || undefined });
+      setCreated({ token: data.token, note: data.note });
+      setName("");
+      if (await load()) onOk("API key created.");
+    } catch (e: any) {
+      onError(e.message || "Could not create API key.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (key: ApiKeyView) => {
+    const label = key.name || key.prefix;
+    if (!window.confirm(`Revoke ${label}? Scripts using it will stop working immediately.`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/account/keys?id=${encodeURIComponent(key.id)}`, "DELETE");
+      if (await load()) onOk("API key revoked.");
+    } catch (e: any) {
+      onError(e.message || "Could not revoke API key.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card2">
+      <h2>API keys</h2>
+      <p className="sub">Use a key as a Bearer token from scripts and CI. New tokens are shown once and are not stored in recoverable form.</p>
+
+      <div className="row">
+        <input
+          className="inp"
+          maxLength={80}
+          placeholder="key name — e.g. deploy workflow"
+          value={name}
+          disabled={busy || Boolean(created)}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !busy && !created) void create(); }}
+        />
+        <button type="button" className="btn2" disabled={busy || Boolean(created)} onClick={() => void create()}>
+          {busy ? "Working…" : "Create key"}
+        </button>
+      </div>
+
+      {created && (
+        <div className="secret" role="status" style={{ marginTop: 14 }}>
+          <b>Copy this key now</b>
+          <p className="sub" style={{ margin: "6px 0" }}>{created.note}</p>
+          <code style={{ display: "block", overflowWrap: "anywhere", marginBottom: 10 }}>{created.token}</code>
+          <span className="row-actions">
+            <button
+              type="button"
+              className="btn2"
+              onClick={async () => {
+                if (await copyText(created.token)) onOk("API key copied.");
+                else onError("Copy failed — select the key and copy it manually.");
+              }}
+            >
+              Copy key
+            </button>
+            <button type="button" className="btn2 ghost" onClick={() => setCreated(null)}>Dismiss</button>
+          </span>
+        </div>
+      )}
+
+      <h3 className="ed-h">Your keys</h3>
+      {loadError ? (
+        <p className="sub" role="alert">Could not load API keys: {loadError}</p>
+      ) : keys === undefined ? (
+        <p className="sub">Loading…</p>
+      ) : (
+        <ul className="list">
+          {keys.map((key) => (
+            <li key={key.id}>
+              <span>
+                <b>{key.name || "Unnamed key"}</b>
+                <span className="muted"> · {key.prefix}… · created {formatApiKeyTime(key.created_at)}</span>
+                <span className="muted"> · last used {formatApiKeyTime(key.last_used)}</span>
+              </span>
+              {key.revoked_at ? (
+                <span className="muted">revoked {formatApiKeyTime(key.revoked_at)}</span>
+              ) : (
+                <button type="button" className="btn2 ghost" disabled={busy} onClick={() => void revoke(key)}>Revoke</button>
+              )}
+            </li>
+          ))}
+          {keys.length === 0 && <li className="muted">No API keys yet.</li>}
+        </ul>
+      )}
     </section>
   );
 }
