@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   filterSignupsByQuery,
   filterSignupsByStatus,
+  parseWaitlistSort,
   parseWaitlistStatus,
 } from "../lib/waitlist-filter.ts";
 
@@ -14,6 +15,15 @@ test("parseWaitlistStatus accepts supported filters and defaults to all", () => 
   assert.equal(parseWaitlistStatus("verified"), "verified");
   assert.equal(parseWaitlistStatus("pending"), "pending");
   assert.equal(parseWaitlistStatus("unknown"), null);
+});
+
+test("parseWaitlistSort accepts supported orders and defaults to newest", () => {
+  assert.equal(parseWaitlistSort(null), "newest");
+  assert.equal(parseWaitlistSort(""), "newest");
+  assert.equal(parseWaitlistSort("newest"), "newest");
+  assert.equal(parseWaitlistSort("oldest"), "oldest");
+  assert.equal(parseWaitlistSort("email"), "email");
+  assert.equal(parseWaitlistSort("random"), null);
 });
 
 test("filterSignupsByStatus keeps the requested verification state", () => {

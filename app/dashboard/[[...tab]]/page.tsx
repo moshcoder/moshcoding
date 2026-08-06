@@ -6,6 +6,7 @@ import { formatStoredWebhookPayload } from "@/lib/webhook-payload";
 import {
   filterSignupsByQuery,
   filterSignupsByStatus,
+  type WaitlistSort,
   type WaitlistStatus,
 } from "@/lib/waitlist-filter";
 // Tab values double as URL slugs: /dashboard/<tab> (the default "page" tab lives at
@@ -779,22 +780,29 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
   const [active, setActive] = useState<string | null>(null);
   const [signups, setSignups] = useState<any[] | null>(null);
   const [status, setStatus] = useState<WaitlistStatus>("all");
+  const [sort, setSort] = useState<WaitlistSort>("newest");
   const [query, setQuery] = useState("");
+  const loadRequest = useRef(0);
 
-  const load = async (dn: string) => {
+  const load = async (dn: string, order: WaitlistSort = sort) => {
+    const request = ++loadRequest.current;
     setActive(dn); setSignups(null);
     try {
-      const r = await fetch(`/api/waitlist/manage?dn=${encodeURIComponent(dn)}`);
+      const r = await fetch(`/api/waitlist/manage?dn=${encodeURIComponent(dn)}&sort=${order}`);
       const d = await r.json();
+      if (request !== loadRequest.current) return;
       if (!r.ok) throw new Error(d.error);
       setSignups(d.signups || []);
-    } catch (e: any) { onError(e.message || "Failed to load."); setSignups([]); }
+    } catch (e: any) {
+      if (request !== loadRequest.current) return;
+      onError(e.message || "Failed to load."); setSignups([]);
+    }
   };
 
   useEffect(() => {
     fetch("/api/account").then((r) => r.json()).then((d) => {
       setDomains(d.parkedDomains || []);
-      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain);
+      if (d.parkedDomains?.[0]) load(d.parkedDomains[0].domain, "newest");
     }).catch(() => setDomains([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -808,7 +816,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
   const filtered = matchingSignups
     ? filterSignupsByStatus(matchingSignups, status)
     : null;
-  const hasFilters = status !== "all" || query.trim() !== "";
+  const hasFilters = status !== "all" || query.trim() !== "" || sort !== "newest";
   const verifiedCount = matchingSignups?.filter((signup) => signup.verified).length ?? 0;
   const pendingCount = matchingSignups ? matchingSignups.length - verifiedCount : 0;
   const filters: { value: WaitlistStatus; label: string; count: number }[] = [
@@ -823,7 +831,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
       <p className="sub">Each parked domain keeps its own waitlist.</p>
       <div className="tabs" style={{ flexWrap: "wrap" }}>
         {domains.map((d) => (
-          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>
+          <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain, sort)}>
             {d.domain} <span className="muted">({d.count})</span>
           </button>
         ))}
@@ -832,7 +840,7 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
         <>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <h3 className="ed-h">{active} — {filtered ? filtered.length : "…"} signups</h3>
-            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv&status=${status}&q=${encodeURIComponent(query)}`}>
+            <a className="btn2 ghost" href={`/api/waitlist/manage?dn=${encodeURIComponent(active)}&format=csv&status=${status}&q=${encodeURIComponent(query)}&sort=${sort}`}>
               {hasFilters ? "Export filtered CSV" : "Export CSV"}
             </a>
           </div>
@@ -850,6 +858,21 @@ function WaitlistPanel({ onError }: { onError: (m: string) => void }) {
                 Clear
               </button>
             )}
+            <select
+              className="inp"
+              style={{ maxWidth: 180 }}
+              value={sort}
+              onChange={(event) => {
+                const nextSort = event.target.value as WaitlistSort;
+                setSort(nextSort);
+                if (active) void load(active, nextSort);
+              }}
+              aria-label="Sort waitlist signups"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="email">Email A-Z</option>
+            </select>
           </div>
           <div className="tabs" role="group" aria-label="Filter waitlist signups">
             {filters.map((filter) => (
