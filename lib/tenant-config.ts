@@ -1,4 +1,6 @@
-import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags } from "@/lib/config";
+import {
+  normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, cleanCustomCode, cleanCustomCss,
+} from "@/lib/config";
 import { normalizeRepo } from "@/lib/github";
 
 export const PLATFORMS = ["x", "bluesky", "instagram", "tiktok", "github", "youtube"];
@@ -71,6 +73,15 @@ export function sanitizeTenantConfig(body: any): Record<string, any> {
 
   const blocks = cleanBlocks(body?.blocks);
   if (blocks.length) c.blocks = blocks;
+
+  // Analytics/tracker code, stored verbatim (bounded). Rendered only on the
+  // tenant's own hostname — see cleanCustomCode in lib/config.
+  const headHtml = cleanCustomCode(body?.headHtml);
+  if (headHtml) c.headHtml = headHtml;
+  const bodyHtml = cleanCustomCode(body?.bodyHtml);
+  if (bodyHtml) c.bodyHtml = bodyHtml;
+  const customCss = cleanCustomCss(body?.customCss);
+  if (customCss) c.customCss = customCss;
 
   // Uploaded MP4 videos ({name, url}). url is a same-origin /api/media/ path
   // (or an http(s) URL); passed through so a config save doesn't wipe uploads.

@@ -69,7 +69,8 @@ export default async function Page({
   const bidDn = safeDomain(sp.bid);
   if (bidDn) return <BidPage dn={bidDn} />;
   // ?dn wins (iframe/masked path); else the branded Host (direct custom domain).
-  const dn = safeDomain(sp.dn) || (await hostTenantDn());
+  const hostDn = await hostTenantDn();
+  const dn = safeDomain(sp.dn) || hostDn;
   if (!dn) return <Landing />;
 
   // A Moshpit name that DNS parked here belongs to the Pit, not to this app's
@@ -103,6 +104,13 @@ export default async function Page({
         stream: sp.stream, audioStream: sp.audio ?? sp.audio_stream, videoStream: sp.video ?? sp.video_stream,
         brand: sp.brand, headline: sp.headline, tagline: sp.tagline, sub: sp.sub,
         codeBlock: sp.code_block, adBlock: sp.ad_block, tenantOverride,
+        // The owner's analytics/tracker code runs ONLY when this request is the
+        // tenant's own domain hitting the app directly — that page is its own
+        // origin, so their script can only touch their own site. On
+        // moshcoding.com/?dn=<domain> (preview + Porkbun masked iframe) the
+        // document is OUR origin and anyone can park any domain name, so the
+        // code stays off there. See cleanCustomCode in lib/config.
+        allowCustomCode: !!hostDn && dn === hostDn,
       })}
     />
   );
