@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccountById, updateAccountProfile, updateAccountConfig, setAccountDomain, listParkedDomains } from "@/lib/db";
 import { resolveAccountId } from "@/lib/api";
-import { normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain } from "@/lib/config";
+import {
+  normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain, cleanCustomCode, cleanCustomCss,
+} from "@/lib/config";
 import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
 import { listRepoAssets, normalizeRepo } from "@/lib/github";
@@ -76,6 +78,14 @@ function sanitizeConfig(body: any): Record<string, any> {
   // (escape-first) at display time, so no HTML sanitization is needed here.
   const blocks = cleanBlocks(body?.blocks);
   if (blocks.length) c.blocks = blocks;
+
+  // Analytics/tracker code, stored verbatim (bounded) — see cleanCustomCode.
+  const headHtml = cleanCustomCode(body?.headHtml);
+  if (headHtml) c.headHtml = headHtml;
+  const bodyHtml = cleanCustomCode(body?.bodyHtml);
+  if (bodyHtml) c.bodyHtml = bodyHtml;
+  const customCss = cleanCustomCss(body?.customCss);
+  if (customCss) c.customCss = customCss;
 
   // Uploaded videos ({name, url, poster?}) — pass through so a config save
   // doesn't wipe uploads (they're written to the tenant config by /api/upload).
@@ -167,7 +177,9 @@ export async function POST(req: NextRequest) {
   const src = body?.config ? body.config : body;
   if (body?.config || src?.socials || src?.customLinks || src?.sponsors || src?.hashtags ||
       src?.stream !== undefined || src?.fgRgba !== undefined || src?.bgRgba !== undefined ||
-      src?.repo !== undefined || src?.blocks !== undefined || TEXT_FIELDS.some((k) => src?.[k] !== undefined)) {
+      src?.repo !== undefined || src?.blocks !== undefined ||
+      src?.headHtml !== undefined || src?.bodyHtml !== undefined || src?.customCss !== undefined ||
+      TEXT_FIELDS.some((k) => src?.[k] !== undefined)) {
     const config = sanitizeConfig(src);
     // Pull image assets from the connected repo (best-effort; don't wipe the
     // existing gallery on a transient GitHub error).

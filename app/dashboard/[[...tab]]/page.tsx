@@ -264,6 +264,9 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
   const [videos, setVideos] = useState<{ name: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [blocks, setBlocks] = useState<BlockRow[]>([]);
+  const [headHtml, setHeadHtml] = useState("");
+  const [bodyHtml, setBodyHtml] = useState("");
+  const [customCss, setCustomCss] = useState("");
   const [saving, setSaving] = useState(false);
 
   const hydrateConfig = (c: any) => {
@@ -273,6 +276,9 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
     setAssets(c.assets || []);
     setVideos(Array.isArray(c.videos) ? c.videos : []);
     setBlocks(Array.isArray(c.blocks) ? c.blocks : []);
+    setHeadHtml(c.headHtml || "");
+    setBodyHtml(c.bodyHtml || "");
+    setCustomCss(c.customCss || "");
     setSocials(c.socials || {});
     setLinks(c.customLinks || []);
     setSponsors(c.sponsors || []);
@@ -357,6 +363,9 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
             assetPattern: assetPattern.trim(),
             videos,
             blocks: blocks.map((b) => ({ ...b, content: b.content })),
+            headHtml,
+            bodyHtml,
+            customCss,
             ...text,
           },
         }),
@@ -519,6 +528,40 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         </div>
       )}
       {repo && <p className="sub" style={{ marginTop: 6 }}>{assets.length} asset(s) loaded. Public repos work as-is; private repos need a server GITHUB_TOKEN. Use <b>↻ Refresh media</b> to re-pull without saving the rest of the form.</p>}
+
+      <h3 className="ed-h">Analytics &amp; trackers <span className="muted">(pasted in as-is — script, style, any HTML)</span></h3>
+      <p className="sub">
+        Paste the snippet your analytics vendor gives you. It is injected verbatim into
+        your page — nothing is rewritten or stripped.{" "}
+        <b>It only runs on {activeDomain} itself</b>, once the domain points straight at
+        moshcoding (the <b>Custom domain</b> tab). Previews here and masked/forwarded
+        domains render on moshcoding.com, where we can&apos;t run your code — so those
+        hits stay out of your numbers.
+      </p>
+      <div className="block-ed">
+        <div className="block-bar"><span className="muted">Head HTML · loaded first (analytics tags, verification meta)</span></div>
+        <textarea
+          className="block-ta" rows={4} spellCheck={false}
+          placeholder={'<script defer data-domain="example.com" src="https://plausible.io/js/script.js"></script>'}
+          value={headHtml} onChange={(e) => setHeadHtml(e.target.value)}
+        />
+      </div>
+      <div className="block-ed">
+        <div className="block-bar"><span className="muted">CSS · wrapped in a &lt;style&gt; tag</span></div>
+        <textarea
+          className="block-ta" rows={4} spellCheck={false}
+          placeholder={".t-headline { letter-spacing: -0.02em; }"}
+          value={customCss} onChange={(e) => setCustomCss(e.target.value)}
+        />
+      </div>
+      <div className="block-ed">
+        <div className="block-bar"><span className="muted">Body HTML · end of the page (pixels, chat widgets, noscript)</span></div>
+        <textarea
+          className="block-ta" rows={4} spellCheck={false}
+          placeholder={'<noscript><img src="https://example.com/pixel.gif" alt="" /></noscript>'}
+          value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)}
+        />
+      </div>
 
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn2" disabled={saving} onClick={save}>{saving ? "Saving…" : `Save & publish ${activeDomain}`}</button>

@@ -62,6 +62,13 @@ moshcoding.com/?dn=yourdomain.com
   `configs/<domain>.json` override (`brand`, `headline`, `tagline`, `sub`, `accent`, `cta`,
   plus `hashtag` and a linktree via `socials`/`links`). Every tenant page carries a
   **"© 2026 powered by moshcoding.com"** link.
+- **Analytics & trackers** — each domain gets a **Head HTML**, **CSS** and **Body HTML**
+  box in the dashboard (`headHtml` / `customCss` / `bodyHtml` in the tenant config).
+  Whatever the owner pastes is injected verbatim, so a vendor snippet works unedited.
+  It runs **only when the request arrives on the tenant's own hostname** — a page on
+  its own origin can only affect its own site. On `moshcoding.com/?dn=<domain>`
+  (preview + masked-iframe forwarding) the document is *our* origin and any account
+  can park any domain name, so the code stays off there.
 - **Waitlist** — `POST /api/waitlist { email, dn? }`, stored in **libSQL / Turso**
   (`signups` table, unique per email+domain) via `@libsql/client`. Domain owners
   can filter confirmed/pending signups and export the current view as CSV.

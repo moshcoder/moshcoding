@@ -40,6 +40,12 @@ export type TenantConfig = {
   adFormat: string;
   /** Owner-authored markdown content blocks, rendered (safely) on the page. */
   blocks: ContentBlock[];
+  /** Owner-pasted HTML injected at the top of the page (analytics/tracker tags). */
+  headHtml: string | null;
+  /** Owner-pasted HTML injected at the end of the page (pixels, chat widgets). */
+  bodyHtml: string | null;
+  /** Owner-authored CSS, emitted in a <style> tag. */
+  customCss: string | null;
 };
 
 export type ContentBlock = { id: string; type: string; content: string; enabled: boolean };
@@ -97,6 +103,42 @@ export function cleanCode(v: unknown): string | null {
   // the rest, so this is only about size + stray control bytes.
   const s = v.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, "").slice(0, 2000);
   return s.trim() ? s : null;
+}
+
+/** Size cap for one custom-code field. Analytics snippets are a few hundred bytes. */
+export const CUSTOM_CODE_MAX = 8000;
+
+/**
+ * Owner-pasted markup for analytics + trackers (Plausible, GA, Fathom, a Meta
+ * pixel, a `google-site-verification` meta tag…).
+ *
+ * Deliberately NOT sanitized: running the owner's own script is the entire
+ * point, and a scrubber would only break every snippet a vendor hands out. All
+ * this does is bound the size and drop control bytes that would corrupt the
+ * document. The safety property lives elsewhere — `configFor` only surfaces
+ * these fields when `allowCustomCode` is set, which `app/page.tsx` does ONLY
+ * for a page served on the tenant's own hostname. On moshcoding.com's own
+ * origin (the `/?dn=<domain>` preview + masked-iframe path) they stay null,
+ * because parking a domain isn't proof of owning it — anyone can add any domain
+ * in the dashboard, so honoring this there would be stored XSS on the app.
+ */
+export function cleanCustomCode(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  // Keep tabs/newlines; drop the other control chars (cf. cleanCode above).
+  const s = v.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, "").slice(0, CUSTOM_CODE_MAX);
+  return s.trim() ? s : null;
+}
+
+/**
+ * Same as cleanCustomCode, for the field that goes inside a <style> element.
+ * A stray `</style>` in the CSS box would end the element early and dump the
+ * rest of the stylesheet into the page as text, so the closing sequence is
+ * broken up — CSS has no use for it, and the owner has the HTML boxes when they
+ * actually want markup.
+ */
+export function cleanCustomCss(v: unknown): string | null {
+  const s = cleanCustomCode(v);
+  return s ? s.replace(/<\/(style|script)/gi, "<\\/$1") : null;
 }
 
 /** Accepts only an rgb()/rgba() color string; returns it trimmed, or null. */
@@ -282,6 +324,13 @@ export type TenantOverrides = {
   sub?: string | null;
   /** Override loaded from the DB tenants table for a provisioned (paid) domain. */
   tenantOverride?: Record<string, any> | null;
+  /**
+   * Whether the saved analytics/tracker code may be emitted. True only when the
+   * page is being served on the tenant's OWN hostname — see cleanCustomCode.
+   * Never settable from the query string: these fields come from the saved
+   * config only, so no URL can inject markup into someone else's page.
+   */
+  allowCustomCode?: boolean;
 };
 
 /**
@@ -467,5 +516,11 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     })(),
     // Owner-authored markdown blocks come only from the saved tenant config.
     blocks: cleanBlocks(ov.blocks),
+    // Analytics/tracker code: saved config only, and only on the tenant's own
+    // host. `...override` above already spread the raw values in, so these keys
+    // must stay last — they are what enforces the gate.
+    headHtml: opts.allowCustomCode ? cleanCustomCode(ov.headHtml) : null,
+    bodyHtml: opts.allowCustomCode ? cleanCustomCode(ov.bodyHtml) : null,
+    customCss: opts.allowCustomCode ? cleanCustomCss(ov.customCss) : null,
   };
 }

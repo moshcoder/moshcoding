@@ -14,6 +14,12 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
   } as React.CSSProperties;
   return (
     <div className="tenant" style={accentStyle}>
+      {/* Owner-supplied CSS + analytics/tracker tags. Server-rendered, so the
+          browser's parser runs any <script> in the initial document exactly as
+          it would in a hand-written page. Only reaches here on the tenant's own
+          hostname — configFor nulls these out everywhere else. */}
+      {cfg.customCss && <style dangerouslySetInnerHTML={{ __html: cfg.customCss }} />}
+      {cfg.headHtml && <div className="t-inject" dangerouslySetInnerHTML={{ __html: cfg.headHtml }} />}
       <div className="tenant-wrap">
         <a className="powered" href="https://moshcoding.com" target="_blank" rel="noopener noreferrer">⚡ powered by <b>#moshcoding</b></a>
         {cfg.styles.length > 0 && (
@@ -127,6 +133,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           &copy; 2026 <a href="https://moshcoding.com" target="_blank" rel="noopener noreferrer">powered by moshcoding.com</a>
         </footer>
       </div>
+      {cfg.bodyHtml && <div className="t-inject" dangerouslySetInnerHTML={{ __html: cfg.bodyHtml }} />}
     </div>
   );
 }

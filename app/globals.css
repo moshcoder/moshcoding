@@ -279,6 +279,11 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .ed-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ash); }
 .ed-grid input { padding: 9px 11px; background: #0b0d0a; border: 1px solid var(--line); border-radius: 7px; color: var(--bone); font: inherit; }
 
+/* Owner-injected analytics/tracker markup. The wrapper exists only to carry
+   dangerouslySetInnerHTML; display:contents keeps it out of the layout so a
+   tracker's <script>/<noscript> adds no box of its own. */
+.t-inject { display: contents; }
+
 /* rendered markdown content blocks (tenant page) */
 .t-blocks { max-width: 560px; margin: 24px auto 0; text-align: left; display: flex; flex-direction: column; gap: 18px; }
 .t-block { color: var(--bone); font-size: 15px; line-height: 1.65; }
