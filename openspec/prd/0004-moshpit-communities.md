@@ -296,12 +296,33 @@ Checked 2026-08-16:
 | **netcup VPS 2000 G12** | 8 vCPU, 16 GB DDR5 ECC, 512 GB NVMe | €19.25 inc. VAT | **Recommended.** Headroom for ~25 pods, builds on-box fine |
 | netcup VPS 1000 G12 | 4 vCPU, 8 GB DDR5 ECC, 256 GB NVMe | €10.37 inc. VAT | Meets the letter of the ask; ~10–12 pods |
 | Contabo VPS | 4 vCPU, 8 GB, 50 GB NVMe | ~$6 advertised | Cheapest seen; site blocks automated checks, unverified, and 50 GB is thin for pods |
-| Hetzner CX/CPX | comparable | — | Raised prices three times in 2026; CCX line nearly tripled in June |
+| Vultr / Linode / DigitalOcean | comparable | ~$40–48 | Pricier, but the only options sh1pt can provision end-to-end today (see below) |
 
-Serverhunter could not be scraped (JS-rendered listings); the above is from
-provider pages directly. **Recommendation: netcup VPS 2000 G12.** The €9/month
-difference buys the difference between "pods work" and "pods swap," and pods are
-the entire dev-environment promise.
+Hetzner is excluded by standing preference and is not to be reconsidered on
+price. Serverhunter could not be scraped (JS-rendered listings); the above is
+from provider pages directly. **Recommendation: netcup VPS 2000 G12.** The
+€9/month difference over the 8 GB plan buys the difference between "pods work"
+and "pods swap," and pods are the entire dev-environment promise.
+
+### sh1pt cannot provision netcup
+
+sh1pt ships 14 cloud adapters — `atlantic`, `cloudflare`, `digitalocean`,
+`exe-dev`, `firebase`, `fly`, `hetzner`, `lambda-labs`, `linode`, `nvidia`,
+`railway`, `runpod`, `supabase`, `vultr` — and **netcup is not among them**.
+
+Nor can a full one be written. The adapter contract is
+`connect / quote / provision / list / destroy / status`, and netcup publishes
+**no official API for ordering or cancelling servers** — only a DNS API, a Domain
+API, and the SCP SOAP webservice, which manages servers that already exist
+(start, stop, status) and ships disabled by default. A netcup adapter could
+implement `connect`, `list` and `status`; `provision` and `destroy` would have
+to throw.
+
+This is acceptable here and should not drive the hosting choice. **The plan is
+one box, ordered by hand, once.** `root-ubuntu.sh` and AgentBBS's `setup.sh` do
+the provisioning, not sh1pt, and both are idempotent over SSH against any
+Ubuntu host. If fleet-scale programmatic provisioning later becomes a real
+requirement, that is the moment to move to Vultr or Linode — not before.
 
 ## Rollout
 
