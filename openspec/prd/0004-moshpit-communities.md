@@ -54,6 +54,10 @@ communities.
 - Keep the per-community stack **radically vanilla** — a directory, a SQLite
   file, and static-ish services — so an owner who wants something different can
   read it, understand it in an hour, and change it.
+- Make it a **modular web app development stack**, not a template: every feature
+  is an installable npm package, pages are composed from plugin-contributed
+  blocks in named regions, and the whole lifecycle is drivable from a CLI or a
+  webhook without a human in a browser.
 - Give every pit user a dev environment that is a **clone of
   `dev.profullstack.com`**, not a new thing to learn.
 
@@ -223,6 +227,90 @@ Provisioned for `scrambled.eggs`, primary hostname `scrambled-eggs.moshcode.sh`
   mounted, so "change my community" is `ssh` + `vim` + restart. The escape hatch
   is the product, not a support burden.
 
+### The app model: packages, regions, webhooks, CLI
+
+The stack above describes *what a community gets*. This describes *how it is
+built*, and it is what makes the thing a development stack rather than a
+template. Every feature in R10–R21 ships as an installable package; a community
+is a manifest of installed packages plus a SQLite file.
+
+- **R26 [P0] One npm package per feature.** Each feature is
+  `@profullstack/pit-<feature>` — `pit-blog`, `pit-feeds`, `pit-irc`, `pit-bbs`,
+  `pit-search`, `pit-mail`, `pit-coinpay`, `pit-chat`. Published from one
+  monorepo, versioned independently. The "standard stack" is a meta-package
+  (`@profullstack/pit-standard`) that depends on the default set, so R8's
+  provisioner is one install, not twelve.
+- **R27 [P0] Plugin contract.** A package default-exports a definition with
+  `id`, `label`, `version`, lifecycle hooks (`install`, `uninstall`, `update`),
+  `routes` it serves, `widgets` it can render into regions, `jobs` it wants
+  scheduled, and the `events` it emits. Lifecycle hooks receive a context with
+  the community's SQLite handle, its config, and a logger. Nothing reaches into
+  another plugin's tables.
+- **R28 [P0] Migrations belong to the plugin.** `install` creates the plugin's
+  own tables in the community DB, `update` migrates from the recorded version,
+  `uninstall` drops them (after an export). A community's schema is therefore
+  the sum of what it has installed — which is why R11's one-file-per-community
+  rule matters more than it first appears.
+- **R29 [P0] Region endpoints.** A page is composed from four named regions —
+  `header`, `sidebar`, `footer`, `body` — each an ordered list of blocks, each
+  block naming a plugin widget plus its config. The management API is uniform:
+
+  ```
+  GET    /api/v1/sites/{name}/regions/{region}          list blocks, in order
+  POST   /api/v1/sites/{name}/regions/{region}          add a block
+  PATCH  /api/v1/sites/{name}/regions/{region}          reorder (array of block ids)
+  GET    /api/v1/sites/{name}/regions/{region}/{block}  one block + its config
+  PUT    /api/v1/sites/{name}/regions/{region}/{block}  reconfigure it
+  DELETE /api/v1/sites/{name}/regions/{region}/{block}  remove it
+  ```
+
+  A region rejects a widget whose plugin is not installed, and returns the
+  install command rather than a bare 400.
+- **R30 [P0] Package management API + webhooks.** `GET/POST /api/v1/sites/{name}/packages`
+  and `DELETE`/`PUT` per package drive install, uninstall and update. Every
+  lifecycle transition is also reachable by **inbound signed webhook**, so
+  external automation can manage a community without a session — this is the
+  "manage them via webhooks" requirement, and it is the same code path as the
+  API, never a second one.
+- **R31 [P1] Outbound webhooks.** Communities emit `package.installed`,
+  `package.updated`, `package.removed`, `post.published`, `feed.item.matched`,
+  `member.joined`. HMAC-signed, with a delivery log and bounded retries the
+  owner can inspect. An event that cannot be delivered is visible, not silent.
+- **R32 [P0] CLI is the primary interface.** Driven through moshcode under a
+  `pit` namespace, so the whole lifecycle is scriptable and an agent can run it
+  unattended:
+
+  ```
+  moshcode pit new scrambled.eggs          request a community
+  moshcode pit use scrambled.eggs          set the working community
+  moshcode pit add @profullstack/pit-blog  install a package
+  moshcode pit rm  @profullstack/pit-irc   uninstall
+  moshcode pit up                          update everything installed
+  moshcode pit ls                          what is installed, and at what version
+  moshcode pit feed add <url>              subscribe a feed
+  moshcode pit feed find "scrambled eggs"  discover + backfill (R33)
+  moshcode pit region sidebar add pit-feeds/latest
+  moshcode pit region sidebar order <ids>
+  moshcode pit hook add <url> --events 'package.*,post.published'
+  moshcode pit status
+  ```
+
+  Every command is also an API call, so nothing is CLI-only. **Check
+  `cli-tools` PR #5 (the moshcode plugin marketplace) before building the
+  install/registry half — it may already be the mechanism, and two plugin
+  systems in one CLI is the outcome to avoid.**
+- **R33 [P1] Discovery and backfill through rssamplifier.** `pit feed find <topic>`
+  queries `rssamplifier.com/api/search`, resolves candidate URLs through
+  `/api/submit` (which turns a page into a feed), and pulls historical items so
+  a new community's reader is not empty on day one. Because rssamplifier indexes
+  only 4 blogs today (C6), the same command also searches brisk's ~34k corpus —
+  and every community blog is submitted *into* rssamplifier, so the directory
+  grows as communities do.
+- **R34 [P2] Package registry surface.** `GET /api/v1/packages` lists installable
+  packages with versions and descriptions, so the dashboard, the CLI and an
+  agent all read one list. Third-party packages are a later question (see open
+  questions), but the surface should not assume ours are the only ones.
+
 ### Cross-cutting
 
 - **R22 [P0] Resolution and TLS.** Every service answers on its real
@@ -304,25 +392,31 @@ from provider pages directly. **Recommendation: netcup VPS 2000 G12.** The
 €9/month difference over the 8 GB plan buys the difference between "pods work"
 and "pods swap," and pods are the entire dev-environment promise.
 
-### sh1pt cannot provision netcup
+### sh1pt netcup adapter — built, with one hard limit
 
-sh1pt ships 14 cloud adapters — `atlantic`, `cloudflare`, `digitalocean`,
-`exe-dev`, `firebase`, `fly`, `hetzner`, `lambda-labs`, `linode`, `nvidia`,
-`railway`, `runpod`, `supabase`, `vultr` — and **netcup is not among them**.
+sh1pt now ships `@profullstack/sh1pt-cloud-netcup` (branch
+`worktree-cloud-netcup`), driving netcup's SCP REST API — the SOAP webservice
+was retired on 2026-04-30 and replaced by a 63-endpoint REST API with a public
+OpenAPI spec.
 
-Nor can a full one be written. The adapter contract is
-`connect / quote / provision / list / destroy / status`, and netcup publishes
-**no official API for ordering or cancelling servers** — only a DNS API, a Domain
-API, and the SCP SOAP webservice, which manages servers that already exist
-(start, stop, status) and ships disabled by default. A netcup adapter could
-implement `connect`, `list` and `status`; `provision` and `destroy` would have
-to throw.
+The limit that does not go away: **netcup has no order endpoint and no cancel
+endpoint.** Servers are monthly contracts bought through checkout, not API
+resources. So the adapter redefines two verbs:
 
-This is acceptable here and should not drive the hosting choice. **The plan is
-one box, ordered by hand, once.** `root-ubuntu.sh` and AgentBBS's `setup.sh` do
-the provisioning, not sh1pt, and both are idempotent over SSH against any
-Ubuntu host. If fleet-scale programmatic provisioning later becomes a real
-requirement, that is the moment to move to Vultr or Linode — not before.
+- `provision` **adopts** — it takes a server already on the account with no OS
+  installed and installs one via `POST /servers/{serverId}/image`, which carries
+  `hostname`, `sshKeyIds` and a first-boot `customScript`. One call lands a
+  fully configured box, which means **`root-ubuntu.sh` can run as the install
+  script** and R1 becomes a single API call rather than a manual SSH session.
+- `destroy` **throws**, naming the Customer Control Panel. Powering a server off
+  would report success while the contract kept billing.
+
+Adoption is deliberately timid, because installing an image wipes the target
+disk: never a server that already has a template, never a disabled one, and
+never a guess between multiple candidates without an `adoptPrefix`.
+
+**The one manual step in this PRD is buying the VPS.** Everything after it is
+automated.
 
 ## Rollout
 
@@ -332,9 +426,18 @@ requirement, that is the moment to move to Vultr or Linode — not before.
 - **Phase 1 — one community by hand.** Provision `scrambled.eggs` manually,
   end to end, writing down every step. The written-down steps are the
   provisioner's spec. Deliverable: a real community, and an honest estimate.
-- **Phase 2 — the provisioner.** R8, driving R10–R14, R18, R19. Deliverable:
-  a name goes in, a stack comes out, twice, idempotently.
-- **Phase 3 — the button.** R6, R7, R9 in the dashboard.
+- **Phase 2 — the plugin host.** R26–R30: the package contract, lifecycle
+  hooks, per-plugin migrations, region endpoints, and the package management
+  API. Build `pit-blog` and `pit-feeds` first — two plugins is the smallest
+  number that proves the contract, one proves nothing. Deliverable: a community
+  whose home page is composed from installed packages.
+- **Phase 3 — the provisioner and the CLI.** R8 driving the standard set as one
+  meta-package install, plus R32's `moshcode pit` verbs and R31's outbound
+  webhooks. Deliverable: a name goes in, a stack comes out, twice, idempotently,
+  from a script with no browser involved.
+- **Phase 3.5 — the button.** R6, R7, R9 in the dashboard. Deliberately after
+  the CLI: the button should call the same API the CLI does, and building it
+  first is how that stops being true.
 - **Phase 4 — topic matching.** R15, R16, R17. Deliberately last: it is the
   largest build (C5), and a community with hand-picked feeds is already useful.
 
@@ -372,6 +475,25 @@ requirement, that is the moment to move to Vultr or Linode — not before.
 - **Does an owner get root on the community itself, or only on a pod?** R21 says
   pod. An owner who wants to replace the whole stack currently has to leave. Is
   "export your `community.db` and go" a good enough answer?
+- **Do third parties get to publish packages?** R34's registry surface should
+  not assume ours are the only packages, but a community installing arbitrary
+  npm code that runs in-process with its SQLite handle is a different security
+  posture entirely. First-party-only in V1, or a sandbox from the start?
+- **What runs plugin code, and where?** In-process with the community server is
+  simplest and gives a bad package the whole box. Per-community process or pod
+  is safer and costs RAM we counted carefully in C7.
+- **Is `pit` the right namespace?** `moshcode pit ...` reads well and matches
+  the brand, but moshcode already carries `/rss` and `/news` list commands that
+  overlap R33's feed verbs. Decide whether `pit feed` subsumes them or sits
+  beside them — two ways to add a feed is the confusing outcome.
+- **Reuse the existing plugin marketplace?** `cli-tools` PR #5 adds a moshcode
+  plugin marketplace and is unmerged. If it is the right mechanism, R26/R34
+  should build on it rather than beside it. Verify before writing a registry.
+- **Inbound webhooks are remote code execution by design.** A signed webhook
+  that installs a package is exactly the capability an attacker wants. HMAC plus
+  a per-community secret is the floor; does it also need an allowlist of
+  installable packages, or operator approval for anything outside the standard
+  set?
 - **The parked page still exists.** When a community is enabled, does the
   moshcoding parked page redirect, or does the community page replace it? C8
   means whichever we choose has a config-merge trap waiting in it.
