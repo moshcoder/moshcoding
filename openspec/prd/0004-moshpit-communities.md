@@ -149,6 +149,24 @@ Several of them delete requirements.
 - **C7 — pods are the RAM budget.** AgentBBS defaults to `512m` per pod. An 8 GB
   box is ~10–12 concurrent pods before swap. It also cannot build AgentBBS
   on-box comfortably under ~1.5 GB.
+- **C10 — a netcup box arrives with an OS already on it.** The first server
+  (`152.53.47.37`, `v2202608398732500378.powersrv.de`) came up installed and
+  answering SSH, with no key authorized and no root password known here — `ssh
+  root@` is refused with `publickey,password`. That means the sh1pt adapter's
+  `provision` will (correctly) refuse to adopt it, because adopting a server
+  that already has a template would wipe a running disk. Two ways forward, and
+  the non-destructive one is better:
+
+  1. **Set a root password via the API** — `PATCH /servers/{id}` accepts a
+     `ServerSetRootPasswordPatch` — then SSH in with it and install the keys.
+     Nothing is destroyed.
+  2. **Reinstall through the adapter** with `sshKeyIds` set, which is clean on a
+     box with nothing on it yet but is a wipe, and needs an explicit
+     `allowReinstall` opt-in the adapter does not have yet.
+
+  Either way the gate is the same: **SCP API credentials, or the root password
+  from netcup's server-provisioning email.** Note that password auth is enabled
+  on the box, so the password alone is enough to finish this by hand.
 - **C9 — `root-ubuntu.sh` is not publicly fetchable.** `ralyodio/dottemplates`
   is a **private** repo, so the `curl -fsSL … | bash` pattern fails on a fresh
   box, and netcup's first-boot `customScript` cannot pull it. Three ways out:
@@ -179,6 +197,14 @@ Several of them delete requirements.
   `ssh <name>@dev.moshcode.sh` is the hub. Every verified member gets a pod
   (`ubuntu:24.04`) and a homepage at `/~name`. This is the "clone of
   dev.profullstack.com" deliverable, and it is a config change, not a build.
+- **R42 [P0] Our public keys land at install time, on every machine we buy.**
+  Standing rule: each new server gets the team's `~/.ssh/*.pub` authorized for
+  root as part of provisioning, never as a follow-up. On netcup that means
+  passing `sshKeyIds` to the image install — a box that finishes installing
+  without a key authorized needs a console or a password round-trip before
+  anyone can touch it, which is exactly how the first box (`152.53.47.37`)
+  stalled. Public keys only; private keys never leave the machine that made
+  them.
 - **R4 [P1] Rebuild, not restore.** The box is disposable. `root-ubuntu.sh` +
   `setup.sh` + a restore of `/var/lib/moshpit-communities` reconstitutes it. Any
   state that cannot survive that path is a bug.
