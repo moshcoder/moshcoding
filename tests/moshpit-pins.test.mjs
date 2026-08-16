@@ -18,6 +18,17 @@ process.env.TURSO_DATABASE_URL = `file:${join(dir, "test.db")}`;
 const {
   PIN_KINDS, addPin, isPin, listPins, normalizePinKind, pinsForName, registerTld, removePin, setAlias,
 } = await import("../lib/moshpit.ts");
+const { ensureSchema } = await import("../lib/db.ts");
+
+// Build the schema here rather than leaving it to whichever test touches the
+// database first. Schema creation is lazy, so without this the whole of
+// initDb() — dozens of CREATE TABLE/INDEX statements against a real file on
+// disk — is billed to the first test that calls into the database, inside that
+// test's 5s timeout. On a warm machine that is milliseconds and invisible; on a
+// cold CI runner it crossed the limit, which is why one pin test failed on CI
+// while the file passed locally in 172ms. The sibling db suites
+// (project-webhook-management, waitlist-sort-db, …) already warm up this way.
+await ensureSchema();
 
 /** A pin is SHA-256 over an SPKI; any 32 bytes stand in for one here. */
 const somePin = () => createHash("sha256").update(randomBytes(32)).digest("base64");
