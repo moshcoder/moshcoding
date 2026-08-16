@@ -136,6 +136,15 @@ Several of them delete requirements.
 - **C7 — pods are the RAM budget.** AgentBBS defaults to `512m` per pod. An 8 GB
   box is ~10–12 concurrent pods before swap. It also cannot build AgentBBS
   on-box comfortably under ~1.5 GB.
+- **C9 — `root-ubuntu.sh` is not publicly fetchable.** `ralyodio/dottemplates`
+  is a **private** repo, so the `curl -fsSL … | bash` pattern fails on a fresh
+  box, and netcup's first-boot `customScript` cannot pull it. Three ways out:
+  publish the script at a public URL (moshcoding already serves `install.sh`
+  this way), bake a token into the install config (no — that leaves a GitHub
+  token sitting in netcup's panel), or **provision with the SSH key only and
+  push the script over SSH afterwards**, which is how `dev.profullstack.com` is
+  maintained today. The third is the recommendation; it keeps the repo private
+  and costs one extra step.
 - **C8 — the parked-page config merges under the DB row per-key.** Any community
   theming written to `configs/*.json` loses to an existing DB value on that key,
   which is how half-applied pages happen today.
@@ -406,8 +415,10 @@ resources. So the adapter redefines two verbs:
 - `provision` **adopts** — it takes a server already on the account with no OS
   installed and installs one via `POST /servers/{serverId}/image`, which carries
   `hostname`, `sshKeyIds` and a first-boot `customScript`. One call lands a
-  fully configured box, which means **`root-ubuntu.sh` can run as the install
-  script** and R1 becomes a single API call rather than a manual SSH session.
+  fully configured box. Note C9 before planning on it: `root-ubuntu.sh` lives in
+  a private repo, so the `customScript` cannot fetch it today — provision with
+  the SSH key and push the script over SSH, or publish the script publicly
+  first.
 - `destroy` **throws**, naming the Customer Control Panel. Powering a server off
   would report success while the contract kept billing.
 
