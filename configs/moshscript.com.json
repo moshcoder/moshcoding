@@ -1,0 +1,73 @@
+{
+  "brand": "moshscript",
+  "headline": "IS ALL JS",
+  "tagline": "Script your agents like shell scripts. Secretly, it's all JavaScript.",
+  "sub": "A .mosh file is real JS with the whole moshcode vocabulary already in scope.",
+  "fgRgba": "rgba(166,255,26,1)",
+  "cta": "Get in the pit",
+  "hashtags": ["#moshcoding", "#moshscript"],
+  "socials": {
+    "github": "moshcoder"
+  },
+  "customLinks": [
+    { "label": "moshcode on GitHub", "url": "https://github.com/moshcoder/moshcode" },
+    { "label": "moshscript docs", "url": "https://github.com/moshcoder/moshcode#moshscript" },
+    { "label": "moshcoding", "url": "https://moshcoding.com" }
+  ],
+  "blocks": [
+    {
+      "id": "install",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Install\n\n```sh\ncurl -fsSL https://moshcode.sh/install.sh | sh\n```\n\n`moshscript` lands on your PATH next to `moshcode`. No build step — it's plain ESM.\n\n```sh\nmoshcode run script.mosh              # run it\nmoshcode run script.mosh --dry-run    # narrate every side effect, do none of them\nmoshcode commands                     # the whole vocabulary\nmoshcode help requireLogin            # one verb, in detail\n```"
+    },
+    {
+      "id": "hello",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Secretly all JS is legal\n\nThe simple surface stays dead simple:\n\n```js\nwhile (alive) {\n  code();\n  mosh();\n  notify();\n  repeat();\n} // no bugs, only features\n```\n\nUnderneath it's real JavaScript, with every moshcode verb already in scope — no imports, no new syntax:\n\n```js\nconst engines = [\"claude\", \"codex\"];\nfor (const e of engines) install(e);        // → moshcode install <e>\nmcp(\"install\", \"https://mcp.sentry.dev/mcp\");\nagents(\"claude\");                           // drop into an autonomous session\n```\n\nAdd a shebang and it runs like any shell script:\n\n```js\n#!/usr/bin/env moshscript\ninstall(\"claude\");\nagents(\"claude\");\n```\n\n```sh\nchmod +x deploy.mosh && ./deploy.mosh --dry-run staging\n```"
+    },
+    {
+      "id": "auth",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Sign in, once, at the top\n\nSome verbs need an account — `notify()` and `ask()` reach a human through app.moshcode.sh, `save()`/`load()` sync your settings. Say so once instead of failing one call at a time:\n\n```js\nconst me = await requireLogin();   // verifies; runs the login flow if it must\nsay(`signed in as ${me.email} (${me.credits} credits)`);\n```\n\n| verb | what it does |\n|---|---|\n| `await requireLogin()` | the gate — verifies, logs in if needed, **throws** if it can't |\n| `await login({ device, force })` | idempotent; returns `{ ok, email, already }` |\n| `await whoami()` | the account as a **value**: `{ status, verified, user }` |\n| `logout()` | forget this machine's credentials |\n\nThe flow follows the machine: the browser/loopback flow locally, the device-code flow over SSH or on a headless box — where a `127.0.0.1` callback would land on the *browser's* machine and never arrive. Credentials live in `~/.moshcode/credentials.json` at mode `0600`, the same ones `moshcode login` writes, so one login covers the CLI, the pit, and every script."
+    },
+    {
+      "id": "read-verbs",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Values, not screen-scraping\n\n`stocks report NVDA` prints a table. A script usually wants the number — so the read verbs hand back parsed data from the same layer the printed commands render from:\n\n```js\nconst report = await stocksRead(\"report\", \"NVDA\");   // JSON, or null\nconst btc    = await cryptoRead(\"quote\", \"BTC/USD\");\nconst items  = await newsRead({ limit: 5 });          // [{ title, link, source, date }]\n\nconst screen = herdRead(\"api\", { lines: 20 });        // a live agent's terminal\nconst roster = herdList();                            // [{ name, engine, state }]\n```\n\nA failed lookup returns `null` rather than throwing, so one bad symbol doesn't take the whole briefing down."
+    },
+    {
+      "id": "aliases",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Your shortcuts, from a script\n\nThe pit keeps named shortcuts for the lines you retype. Scripts read and write the same store, so your vocabulary and moshcode's stay one thing:\n\n```js\nalias(\"gs\", \"git status --short\");   // define — reserved names are refused, not shadowed\nalias(\"cc\", \"/agents claude\");       // a leading `/` is a moshcode command\nrunAlias(\"gs\", \"--branch\");          // → git status --short --branch\n```\n\nExpansion follows the pit's rule: a leading `/` routes to the moshcode command of that name, anything else is a shell line, and arguments are **appended** rather than substituted — exactly how a shell alias behaves."
+    },
+    {
+      "id": "herd",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Fan out a herd, then read what came back\n\nSessions that outlive the script, driven in parallel:\n\n```js\nherdStart(\"claude\", { name: \"api\" });\nherdStart(\"codex\",  { name: \"web\" });\n\nherdPrompt(\"api\", \"port the auth routes\");\nherdPrompt(\"web\", \"port the dashboard\");\n\nawait herdWait(\"api\");\nawait herdWait(\"web\");\n\nsay(herdRead(\"api\", { lines: 20 }));\n```"
+    },
+    {
+      "id": "human",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Put a human in the loop\n\n```js\nnotify(\"deploy finished 🤘\");                  // fire and forget\nconst next = await ask(\"ship it, or roll back?\");  // BLOCKS for a real answer\n```\n\n`ask()` pings you across whatever channels you've configured — email, SMS, Slack, Telegram, push — surfaces a link at `app.moshcode.sh/approve/:id`, and blocks until you open it, read the context, and type back. The script resumes with your words."
+    },
+    {
+      "id": "safe",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Nothing throws that doesn't have to\n\nCLI verbs and `shell()` return `{ ok, code }` instead of throwing, so a long-running loop survives a single bad step:\n\n```js\nconst test = shell(\"pnpm -r test\");\nif (!test.ok) notify(`tests failed (exit ${test.code})`);\n```\n\nAnd `--dry-run` narrates every action without performing any of it — no engine spawns, no installs, no network calls, no writes:\n\n```\n$ moshcode run deploy.mosh --dry-run\n🎸 moshcode — running moshscript (dry run)\n\n  🔒 requireLogin() → would require an authenticated account\n  ▶ install(claude) → would run: moshcode install claude\n  💬 ready to mosh with 2 engines\n  ▶ agents(claude) → would run: moshcode agents claude\n\n✓ 0 loop(s) — no bugs, only features. 🤘\n```"
+    },
+    {
+      "id": "examples",
+      "type": "markdown",
+      "enabled": true,
+      "content": "## Worked examples\n\nEvery one of these ships in the repo and is safe to run with `--dry-run` first.\n\n| example | what it shows |\n|---|---|\n| [`alive.mosh`](https://github.com/moshcoder/moshcode/blob/main/examples/alive.mosh) | the starter loop |\n| [`scripting-the-cli.mosh`](https://github.com/moshcoder/moshcode/blob/main/examples/scripting-the-cli.mosh) | every CLI verb is just `moshcode <cmd> …` |\n| [`account.mosh`](https://github.com/moshcoder/moshcode/blob/main/examples/account.mosh) | log in, gate on credits, sync settings, ask a human |\n| [`aliases.mosh`](https://github.com/moshcoder/moshcode/blob/main/examples/aliases.mosh) | define and run the pit's shortcuts |\n| [`research-desk.mosh`](https://github.com/moshcoder/moshcode/blob/main/examples/research-desk.mosh) | `stocksRead`/`cryptoRead`/`newsRead` → one digest |\n| [`team-secrets.mosh`](https://github.com/moshcoder/moshcode/blob/main/examples/team-secrets.mosh) | pull encrypted team secrets, then start coding |\n\n```sh\nmoshcode run examples/research-desk.mosh --dry-run NVDA AMD\n```"
+    }
+  ]
+}
