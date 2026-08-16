@@ -86,6 +86,13 @@ possibly the resolver extension.
 **Pit Residents** — Want the `dev.profullstack.com` experience without being on
 the Profullstack team. `ssh` in, get a box, mosh, irssi, mise, moshcode.
 
+`dev.moshcode.sh` is exactly that box opened to the public. On
+`dev.profullstack.com` you need to be an employee or a contractor; on
+`dev.moshcode.sh` the only qualification is **being a moshpit and moshcode
+user**. Same environment, same dotfiles, same shell — different door. That is
+the pitch, and it is the whole reason the two boxes share provisioning
+(`root-ubuntu.sh`) but nothing else.
+
 **Us** — Need this to cost tens of dollars a month, not thousands, and to be
 rebuildable from a script when the VPS dies.
 
@@ -105,14 +112,20 @@ either is wrong, because R1 and R3 change shape.
 These are facts about the current system, verified on 2026-08-16, not opinions.
 Several of them delete requirements.
 
-- **C1 — `pit.moshcode.sh` is already the registry.** It is a Railway service
-  (`mcrmqfx9.up.railway.app` → `69.46.46.24`) serving `/api/moshpit/tlds`,
-  `/resolve`, `/pins`, and it is the hardcoded `DEFAULT_REGISTRY_BASE` in
-  `@moshcoder/moshpit-registry`. Railway will not give us `sshd` on port 22.
-  Either the SSH box takes a different hostname, or the registry moves to the
-  VPS and we change a published default in a package three clients depend on.
-  **Recommendation: SSH box is `dev.moshcode.sh`** (mirrors
-  `dev.profullstack.com`, which is the whole point), registry stays put.
+- **C1 — `pit.moshcode.sh` is already the registry. RESOLVED.** It is a Railway
+  service (`mcrmqfx9.up.railway.app` → `69.46.46.24`) serving
+  `/api/moshpit/tlds`, `/resolve`, `/pins`, and it is the hardcoded
+  `DEFAULT_REGISTRY_BASE` in `@moshcoder/moshpit-registry`. Railway will not
+  give us `sshd` on port 22. **Decision (2026-08-16): the SSH box is
+  `dev.moshcode.sh`; the registry stays where it is.** No published default
+  changes and no package release is needed.
+
+  `dev.profullstack.com` is **not** reused and is not part of this: it keeps
+  running as the Profullstack team box. `dev.moshcode.sh` is a separate machine
+  that merely shares its provisioning — same `root-ubuntu.sh`, same dotfiles,
+  same shell — so the environment is familiar without the two boxes being
+  coupled. Wherever this PRD says "a clone of `dev.profullstack.com`", it means
+  parity of setup, never shared hardware or shared accounts.
 - **C2 — `*.eggs` is not in the ICANN root.** `ssh anthony@scrambled.eggs` works
   only for someone running the resolver, the extension, or our DoH. Every
   service needs a real, dialable hostname as its primary address, with the
@@ -320,6 +333,55 @@ is a manifest of installed packages plus a SQLite file.
   agent all read one list. Third-party packages are a later question (see open
   questions), but the surface should not assume ours are the only ones.
 
+### Tiers: free to develop, paid to grow
+
+The dev environment is the free tier and the funnel. Every moshpit user gets a
+box for free; resources are what costs money. The pod exists **to develop your
+moshpit site** — it is not general-purpose hosting that happens to be free, and
+the product should not read like it is.
+
+- **R35 [P0] Free dev environment for every moshpit user.** Anyone who holds a
+  moshpit name gets a pod at no charge, with the default quotas AgentBBS
+  already enforces (512 MB RAM, 1 CPU) plus a disk and bandwidth cap. Free is
+  the default state, not a trial — there is no expiry and no card required.
+  **Eligibility is holding a moshpit name and using moshcode — nothing else.**
+  No employment, no contract, no invite. This is the one gate, and it should be
+  checkable from the registry (`/api/moshpit/resolve`) at signup rather than
+  maintained as a second list of who is allowed in.
+- **R36 [P1] Paid upgrades as independent dials.** RAM, CPU, disk and bandwidth
+  are each upgradable on their own, priced monthly. Someone who needs disk and
+  not CPU should not have to buy a bundle. Upgrades apply to the pod without
+  rebuilding it where the container runtime allows.
+- **R37 [P1] Quotas are visible before they bite.** The owner sees usage against
+  each cap in the CLI and on the dashboard. Hitting a cap **degrades
+  predictably** — throttle, refuse the write, warn — and never silently kills a
+  pod or drops data. A surprise is a support ticket; a warning is an upgrade.
+- **R38 [P1] Billing through CoinPay.** Upgrades are a subscription against the
+  CoinPay org from R19, so the payment rail we sell to communities is the one
+  we run ourselves. Non-payment downgrades to the free tier; it never deletes
+  the pod or the community.
+- **R39 [P1] Develop here, publish there.** The pod mounts the community
+  directory (R21), and `moshcode pit deploy` promotes what is in the pod to the
+  live community. Without that verb the dev environment is a box with no exit,
+  which is the difference between a dev environment and a free VPS.
+- **R41 [P0] The pod ships the toolchain, moshcode included.** AgentBBS's
+  `AGENTBBS_POD_IMAGE` defaults to bare `ubuntu:24.04`, which gets none of what
+  `root-ubuntu.sh` installs on the *host* — that script provisions the machine,
+  not the containers on it. So the pod needs its own image, built and pinned by
+  us: **moshcode**, mise, git, zsh + oh-my-zsh, tmux + our `.tmux.conf.local`,
+  irssi config, vim, and the dotfiles. A user who lands in a pod and types
+  `moshcode` should get moshcode, not `command not found`.
+
+  Two rules the image must honour, both learned the hard way:
+  **never invoke moshcode under `sudo`** — it escalates itself, and
+  `sudo moshcode update` installs into `/root`; and **never auto-enable
+  moshcode's DNS** — auto-enabling has broken a working system before, so
+  `dns enable` stays something a human types.
+- **R40 [P2] Capacity is a business input, not a constraint to hide.** The free
+  tier's cost is bounded by pods per box (C7). When the box fills, the answer is
+  a second box funded by upgrade revenue — never quietly shrinking the free
+  tier, which is the move that kills the funnel.
+
 ### Cross-cutting
 
 - **R22 [P0] Resolution and TLS.** Every service answers on its real
@@ -433,7 +495,8 @@ automated.
 
 - **Phase 0 — the box.** VPS, `root-ubuntu.sh`, AgentBBS `setup.sh`, Ergo, TLS,
   DNS. Deliverable: `ssh join@dev.moshcode.sh` works for a stranger. No
-  communities yet. Settles C1 by picking the hostname.
+  communities yet. The hostname is settled (C1); the only remaining gate is
+  buying the VPS, which has no API.
 - **Phase 1 — one community by hand.** Provision `scrambled.eggs` manually,
   end to end, writing down every step. The written-down steps are the
   provisioner's spec. Deliverable: a real community, and an honest estimate.
@@ -454,10 +517,6 @@ automated.
 
 ## Risks & Open Questions
 
-- **The hostname collision (C1).** Does the registry move to the VPS — changing a
-  published default in `@moshcoder/moshpit-registry` that the resolver bridge,
-  pinning proxy and extension all depend on — or does the SSH box get
-  `dev.moshcode.sh`? Blocking for Phase 0. Recommendation is on the record above.
 - **Mail is the hardest piece and the least discussed.** A brand-new
   `mail.moshcode.sh` starts with zero sending reputation, and communities are
   exactly the shape of thing that attracts spam-adjacent use. Do we run our own
@@ -467,10 +526,12 @@ automated.
   neighbor, one kernel panic, or one abuse complaint takes all of them out. Is
   that acceptable for a free tier? (It probably is — say so out loud rather than
   discovering it during the first outage.)
-- **Free forever, or free to start?** "Must enable but free" is the brief.
-  Someone pays for the box, the Kagi queries, the LLM classification passes and
-  the mail. Is the plan that CoinPay orgs eventually pay for themselves, or is
-  this a marketing cost with a cap?
+- **Is the free tier's unit economics actually positive?** RESOLVED in shape
+  (R35–R40): free dev environment, paid resource upgrades, billed through
+  CoinPay. Still open in numbers — what a free pod costs us per month against
+  what fraction upgrade, and what the upgrade prices are. Until someone puts
+  figures on that, M5's "under €25/month at 25 communities" is the only
+  constraint on the table and it does not survive contact with paid pods.
 - **Topic matching may not be good enough (C5).** If M4 comes in under 50%, is
   the fallback a curated topic taxonomy (~200 topics, hand-mapped to feeds) that
   owners pick from? That is less magical and much more likely to work.
