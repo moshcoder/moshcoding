@@ -95,6 +95,41 @@ function inline(escaped: string): string {
   return s;
 }
 
+// ---- GFM pipe tables -------------------------------------------------------
+// Splits a row into cells, tolerating the optional leading/trailing pipes that
+// both `| a | b |` and `a | b` are written with.
+function tableCells(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|").map((c) => c.trim());
+}
+
+// A delimiter row is dashes and optional alignment colons, nothing else.
+const TABLE_DELIM = /^\s*\|?(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$/;
+
+/**
+ * A table starts only where a header row is followed by a matching delimiter
+ * row. Both must carry a pipe and agree on cell count — otherwise an ordinary
+ * paragraph that happens to contain `|` sitting above an `---` horizontal rule
+ * would be swallowed as a one-column table.
+ */
+function isTableStart(lines: string[], i: number): boolean {
+  const head = lines[i], delim = lines[i + 1];
+  if (typeof delim !== "string" || !head.includes("|") || !delim.includes("|")) return false;
+  if (!TABLE_DELIM.test(delim)) return false;
+  return tableCells(head).length === tableCells(delim).length;
+}
+
+// Alignment comes from a fixed set of literals, never from user text.
+function alignAttr(cell: string): string {
+  const c = cell.trim();
+  const left = c.startsWith(":"), right = c.endsWith(":");
+  if (left && right) return ' style="text-align:center"';
+  if (right) return ' style="text-align:right"';
+  return "";
+}
+
 export function renderMarkdown(md: string): string {
   const lines = String(md ?? "").replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];
@@ -150,6 +185,31 @@ export function renderMarkdown(md: string): string {
       i++; continue;
     }
 
+    // table: header row + |---|---| delimiter, then rows until a blank line
+    if (isTableStart(lines, i)) {
+      closeList();
+      const head = tableCells(lines[i]);
+      const aligns = tableCells(lines[i + 1]).map(alignAttr);
+      i += 2;
+      const body: string[][] = [];
+      while (i < lines.length && !/^\s*$/.test(lines[i]) && lines[i].includes("|")) {
+        body.push(tableCells(lines[i]));
+        i++;
+      }
+      const cell = (tag: string, text: string, n: number) =>
+        `<${tag}${aligns[n] || ""}>${inline(escapeHtml(text))}</${tag}>`;
+      const thead = head.map((c, n) => cell("th", c, n)).join("");
+      // Rows are padded/truncated to the header's width so a ragged row can't
+      // shift the columns of the ones below it.
+      const tbody = body
+        .map((r) => `<tr>${head.map((_c, n) => cell("td", r[n] ?? "", n)).join("")}</tr>`)
+        .join("");
+      out.push(
+        `<div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`,
+      );
+      continue;
+    }
+
     // paragraph (gather consecutive non-blank, non-structural lines)
     closeList();
     const para: string[] = [line];
@@ -158,7 +218,7 @@ export function renderMarkdown(md: string): string {
       i < lines.length && !/^\s*$/.test(lines[i]) && !/^```/.test(lines[i]) &&
       !/^(#{1,6})\s/.test(lines[i]) && !/^\s*>/.test(lines[i]) &&
       !/^\s*[-*+]\s/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i]) &&
-      !/^\s*(---|\*\*\*|___)\s*$/.test(lines[i])
+      !/^\s*(---|\*\*\*|___)\s*$/.test(lines[i]) && !isTableStart(lines, i)
     ) { para.push(lines[i]); i++; }
     out.push(`<p>${inline(escapeHtml(para.join("\n"))).replace(/\n/g, "<br />")}</p>`);
   }
