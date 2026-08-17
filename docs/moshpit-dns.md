@@ -41,6 +41,12 @@ through the registry: there is nothing to conflict with.
 This mirrors the browser extension's policy exactly, so switching from the
 extension to these resolvers does not change which site you land on.
 
+**The web app applies the same two positions**, under the same variable. A
+domain parked on this app whose ending someone has claimed in the pit keeps its
+own page — `.sh` is claimed, and `moshcode.sh` answers on the clearnet, so it is
+not the pit's to redirect. Set `MOSHPIT_RESOLVE_MODE=moshpit` on the service and
+a registered name goes to the Pit even when the legacy root answers for it.
+
 ## Running one
 
 ```sh
