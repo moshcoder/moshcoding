@@ -77,7 +77,9 @@ export default async function Page({
   // parked-domain card. Temporary, not permanent: the owner can point the name
   // at a real target at any moment, and a 308 cached in a browser would keep
   // sending them here long after this app stopped being the answer. Ordinary
-  // parked clearnet domains do not match and render exactly as before.
+  // parked clearnet domains do not match and render exactly as before — a real
+  // extension outranks the pit unless MOSHPIT_RESOLVE_MODE says otherwise, so
+  // claiming an ending cannot take a domain that already works away from it.
   if (await isMoshpitName(dn)) redirect(pitNameUrl(dn));
 
   // A paid/provisioned domain has a tenants row that overrides the defaults.

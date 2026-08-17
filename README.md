@@ -87,7 +87,10 @@ bun run dev               # http://localhost:8080
 
 Env: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (required) · `COINPAY_ISSUER`,
 `COINPAY_CLIENT_ID`, `COINPAY_CLIENT_SECRET`, `SESSION_SECRET`, `APP_BASE_URL` (for login) ·
-`PORT` (default 8080). Turso tables are created automatically on first request.
+`PORT` (default 8080) · `MOSHPIT_RESOLVE_MODE` (`clearnet` default — a real
+extension outranks the pit; `moshpit` lets a registered name win anyway, see
+[docs/moshpit-dns.md](docs/moshpit-dns.md)). Turso tables are created
+automatically on first request.
 
 ### Deploy (Railway)
 
