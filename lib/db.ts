@@ -300,6 +300,42 @@ async function initSchema(): Promise<void> {
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_moshpit_tld_pins ON moshpit_tld_pins (tld, kind)`);
 
+  // A paid claim in flight. Claiming an ending costs money, and a crypto
+  // payment is not instant, so the name has to be held across the round-trip
+  // or two people can both pay for `.eggs` and only one can have it.
+  //
+  // The hold is the row; `expires_at` is when it stops counting. Expired holds
+  // are swept to 'expired' before any availability decision rather than being
+  // filtered at read time, so the partial unique index below always describes
+  // live reservations only — one open claim per ending, enforced by the
+  // database instead of by whoever remembers to check.
+  //
+  // 'refund_due' is the case worth naming: a payment that confirms after its
+  // hold lapsed and the name went to someone else. The money arrived and the
+  // ending cannot be given, so the row stops being a claim and becomes a debt.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS moshpit_tld_claims (
+      id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      tld         TEXT NOT NULL,
+      account_id  TEXT NOT NULL,
+      owner_email TEXT,
+      payment_id  TEXT UNIQUE,
+      amount_usd  TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','registered','expired','refund_due')),
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at  TEXT NOT NULL,
+      settled_at  TEXT
+    )
+  `);
+  await d.execute(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_moshpit_claim_open
+     ON moshpit_tld_claims (tld) WHERE status = 'pending'`,
+  );
+  await d.execute(
+    `CREATE INDEX IF NOT EXISTS idx_moshpit_claim_account ON moshpit_tld_claims (account_id)`,
+  );
+
   // Append-only. No UPDATE or DELETE is ever issued against this table: "who
   // claimed .eggs first" has to stay answerable after the fact, including when
   // the answer is inconvenient.

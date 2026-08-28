@@ -23,3 +23,23 @@ test("setupAmountUsd rejects malformed or unsafe payment amounts", () => {
   assert.throws(() => setupAmountUsd(Number.NaN), /positive/);
   assert.throws(() => setupAmountUsd(Number.POSITIVE_INFINITY), /positive/);
 });
+
+test("claimPriceUsd defaults to the $10 ending price", async () => {
+  const { claimPriceUsd, CLAIM_PRICE_USD } = await import("../lib/coinpay.ts");
+  assert.equal(CLAIM_PRICE_USD, "10.00");
+  assert.equal(claimPriceUsd(), 10);
+  assert.equal(claimPriceUsd("25"), 25);
+});
+
+test("claimPriceUsd rejects a price that could not be charged honestly", async () => {
+  const { claimPriceUsd } = await import("../lib/coinpay.ts");
+  assert.throws(() => claimPriceUsd("free"), /positive dollar amount/);
+  assert.throws(() => claimPriceUsd("0"), /positive/);
+  assert.throws(() => claimPriceUsd("10.001"), /positive dollar amount/);
+});
+
+test("formatUsd renders a storable, displayable amount", async () => {
+  const { formatUsd } = await import("../lib/coinpay.ts");
+  assert.equal(formatUsd(10), "10.00");
+  assert.equal(formatUsd(9.5), "9.50");
+});

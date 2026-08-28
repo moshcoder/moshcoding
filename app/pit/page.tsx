@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Nav from "@/components/Nav";
 import PitSearch from "@/components/PitSearch";
 import { listTlds } from "@/lib/moshpit";
+import { payConfigured, claimPriceUsd, formatUsd } from "@/lib/coinpay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,8 +21,20 @@ export const metadata: Metadata = {
  * a name over ordinary HTTPS. A bootstrap that needed the thing it bootstraps
  * would be no bootstrap at all.
  */
+/** The claim price for the copy, or null when this deployment charges nothing. */
+function claimPrice(): string | null {
+  if (!payConfigured()) return null;
+  try {
+    return formatUsd(claimPriceUsd());
+  } catch {
+    return null;
+  }
+}
+
 export default async function PitPage() {
   const tlds = await listTlds(24);
+  const price = claimPrice();
+  const priceLabel = price ? `$${price.replace(/\.00$/, "")}` : null;
 
   return (
     <div id="site">
@@ -51,8 +64,15 @@ export default async function PitPage() {
         <p className="tag">// how it works</p>
         <ol className="pit-steps">
           <li>
-            <strong>Claim an ending.</strong> First come, first served. Nobody approves it and
-            nobody can take it back.
+            <strong>Claim an ending.</strong>{" "}
+            {priceLabel ? (
+              <>
+                {priceLabel} once, in USDC on Polygon. First come, first served — nobody approves
+                it and nobody can take it back.
+              </>
+            ) : (
+              <>First come, first served. Nobody approves it and nobody can take it back.</>
+            )}
           </li>
           <li>
             <strong>Sell what&apos;s under it.</strong> You set the prices for{" "}
