@@ -212,7 +212,6 @@ type AccountView = {
   is_admin?: boolean;
   config: any;
   pageUrl: string | null;
-  payUrl: string | null;
 };
 
 const PLATFORMS: [string, string, string][] = [

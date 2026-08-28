@@ -1121,32 +1121,20 @@ export async function getAccountById(id: string): Promise<Account | null> {
   return res.rows[0] ? rowToAccount(res.rows[0]) : null;
 }
 
-/** Records the CoinPay payment id we created for a pending account's setup fee. */
-export async function setAccountPayment(id: string, paymentId: string): Promise<void> {
-  await ensureSchema();
-  await db().execute({
-    sql: `UPDATE accounts SET coinpay_payment_id = ? WHERE id = ?`,
-    args: [paymentId, id],
-  });
-}
-
 /**
- * Marks an account active + paid, idempotently. Looks the account up by the
- * CoinPay payment id (webhook path) or by account id (dev auto-activate). Returns
- * the (now active) account, or null if not found.
+ * Marks an account active + paid, idempotently. Returns the (now active)
+ * account, or null if not found.
  */
-export async function activateAccount(opts: { paymentId?: string; accountId?: string }): Promise<Account | null> {
+export async function activateAccount(opts: { accountId?: string }): Promise<Account | null> {
   await ensureSchema();
-  const where = opts.paymentId ? "coinpay_payment_id = ?" : "id = ?";
-  const arg = opts.paymentId || opts.accountId;
-  if (!arg) return null;
+  if (!opts.accountId) return null;
   const res = await db().execute({
     sql: `UPDATE accounts
              SET status = 'active', plan = 'pro',
                  paid_at = COALESCE(paid_at, datetime('now'))
-           WHERE ${where}
+           WHERE id = ?
            RETURNING *`,
-    args: [arg],
+    args: [opts.accountId],
   });
   return res.rows[0] ? rowToAccount(res.rows[0]) : null;
 }

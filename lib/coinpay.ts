@@ -1,5 +1,4 @@
-// Server-to-server CoinPayPortal payments: the account-setup fee, and the
-// charge for claiming a Moshpit ending (`.eggs`).
+// Server-to-server CoinPayPortal payments for claiming a Moshpit ending.
 //
 // The HTTP client is `createCoinPayClient` from @profullstack/stack/coinpay:
 //   POST <ISSUER>/api/payments/create   Authorization: Bearer <cp_live_ key>
@@ -10,18 +9,16 @@
 //                      event "payment.confirmed".
 //
 // When COINPAY_API_KEY is unset (local dev / not yet provisioned) payConfigured()
-// is false and callers auto-activate instead of charging, so the flow is testable
-// offline. The $1 fee is collected to moshcoding's own business payout wallet — a
-// per-user payout wallet is captured on the account for the user's OWN future
-// earnings, not for this charge.
+// is false and callers register without charging, so the flow is testable
+// offline. The money is collected to moshcoding's own business wallets — the
+// per-user payout wallet on an account is for that user's OWN future earnings,
+// not for this charge.
 import { createCoinPayClient } from "@profullstack/stack/coinpay";
 
 const ISSUER = (process.env.COINPAY_ISSUER || "https://coinpayportal.com").replace(/\/+$/, "");
 const API_KEY = process.env.COINPAY_API_KEY || "";
 const BUSINESS_ID = process.env.COINPAY_BUSINESS_ID || "";
 const PAY_CHAIN = process.env.COINPAY_PAY_CHAIN || "USDC_POL";
-
-export const SETUP_FEE_USD = process.env.SETUP_FEE_USD || "1.00";
 
 /** What claiming one Moshpit ending costs. See app/api/moshpit/tlds/route.ts. */
 export const CLAIM_PRICE_USD = process.env.MOSHPIT_CLAIM_PRICE_USD || "10.00";
@@ -38,7 +35,7 @@ export const CLAIM_HOLD_MINUTES = Math.max(
   Math.min(1440, Number(process.env.MOSHPIT_CLAIM_HOLD_MINUTES || 30) || 30),
 );
 
-/** True once a payment API key is configured; otherwise callers auto-activate. */
+/** True once a payment API key is configured; otherwise claiming is free. */
 export function payConfigured(): boolean {
   return Boolean(API_KEY);
 }
@@ -49,60 +46,38 @@ export function payUrl(id: string): string {
 
 export type CreatedPayment = { id: string; status: string; payUrl: string };
 
-const SETUP_AMOUNT_RE = /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
-
-export function setupAmountUsd(value: unknown = SETUP_FEE_USD): number {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value) || value <= 0) throw new Error("setup payment amount must be positive");
-    const rounded = Math.round(value * 100) / 100;
-    if (Math.abs(value - rounded) > Number.EPSILON) throw new Error("setup payment amount must not have fractional cents");
-    return rounded;
-  }
-
-  const text = String(value ?? "").trim().replace(/\s+/g, "");
-  if (!SETUP_AMOUNT_RE.test(text)) throw new Error("setup payment amount must be a positive dollar amount");
-  const amount = Number(text.replace(/,/g, ""));
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("setup payment amount must be positive");
-  return amount;
-}
+const AMOUNT_RE = /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
 
 /**
- * The claim price as a number, validated the same way the setup fee is.
+ * The claim price as a number.
  *
  * Parsed on every call rather than at module load: a bad
  * MOSHPIT_CLAIM_PRICE_USD must fail the request that would have charged it,
  * not the import that happens to touch this module first — a throw at import
  * time takes down the availability lookup and the public page with it.
+ *
+ * Fractional cents are rejected rather than rounded. A price that cannot be
+ * charged exactly is a configuration mistake, and quietly charging the nearest
+ * chargeable amount is how you end up billing something nobody chose.
  */
 export function claimPriceUsd(value: unknown = CLAIM_PRICE_USD): number {
-  return setupAmountUsd(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) throw new Error("payment amount must be positive");
+    const rounded = Math.round(value * 100) / 100;
+    if (Math.abs(value - rounded) > Number.EPSILON) throw new Error("payment amount must not have fractional cents");
+    return rounded;
+  }
+
+  const text = String(value ?? "").trim().replace(/\s+/g, "");
+  if (!AMOUNT_RE.test(text)) throw new Error("payment amount must be a positive dollar amount");
+  const amount = Number(text.replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("payment amount must be positive");
+  return amount;
 }
 
 /** "10" / "10.5" -> "10.00", for display and for storing what was charged. */
 export function formatUsd(amount: number): string {
   return amount.toFixed(2);
-}
-
-export async function createSetupPayment(opts: {
-  accountId: string;
-  email: string;
-  domain: string;
-  redirectUrl?: string;
-  amount?: string;
-}): Promise<CreatedPayment> {
-  // Lazy construction: createCoinPayClient throws without an apiKey, and this
-  // module is imported even when CoinPay isn't configured (offline dev mode).
-  const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER });
-  const { paymentId, payment } = await coinpay.createCheckout({
-    amountUsd: setupAmountUsd(opts.amount || SETUP_FEE_USD),
-    currency: PAY_CHAIN.toLowerCase(),
-    paymentMethod: "crypto",
-    description: `moshcoding account setup — ${opts.domain}`,
-    metadata: { kind: "account_setup", account_id: opts.accountId, email: opts.email, domain: opts.domain },
-    ...(opts.redirectUrl ? { redirectUrl: opts.redirectUrl } : {}),
-    ...(BUSINESS_ID ? { businessId: BUSINESS_ID } : {}),
-  });
-  return { id: paymentId, status: payment.status || "pending", payUrl: payUrl(paymentId) };
 }
 
 /**

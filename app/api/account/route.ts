@@ -4,7 +4,6 @@ import { resolveAccountId } from "@/lib/api";
 import {
   normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain, cleanCustomCode, cleanCustomCss,
 } from "@/lib/config";
-import { payUrl } from "@/lib/coinpay";
 import { provisionTenant } from "@/lib/provision";
 import { listRepoAssets, normalizeRepo } from "@/lib/github";
 
@@ -139,7 +138,6 @@ function view(acct: any) {
     is_admin: acct.is_admin,
     config: acct.config || {},
     pageUrl: acct.domain ? `/?dn=${encodeURIComponent(acct.domain)}` : null,
-    payUrl: acct.status === "pending" && acct.coinpay_payment_id ? payUrl(acct.coinpay_payment_id) : null,
   };
 }
 
