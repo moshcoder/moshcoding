@@ -386,8 +386,16 @@ export function configFor(dn: string, opts: TenantOverrides = {}): TenantConfig 
     try { override = JSON.parse(fs.readFileSync(file, "utf8")); } catch { override = {}; }
   }
 
-  // A provisioned (paid) tenant is stored in the DB — it wins over the on-disk
-  // file (which won't persist on Railway), merging socials rather than replacing.
+  // A provisioned (paid) tenant is stored in the DB, and it wins over the
+  // on-disk file *per key* — `socials` is merged rather than replaced.
+  //
+  // Both sources are live in production: the Dockerfile copies the whole tree
+  // and CONFIG_DIR is cwd-relative, so `configs/*.json` does ship in the image
+  // and is read here. A row that sets only some keys therefore leaves the file
+  // supplying the rest, which renders as a half-applied page. To hand a domain
+  // back to its file, remove those keys from the row (moshcode.sh is served
+  // this way — `configs/moshcode.sh.json`, with an empty row) rather than
+  // copying the file's content into the DB, which just drifts.
   if (opts.tenantOverride && typeof opts.tenantOverride === "object") {
     const t = opts.tenantOverride;
     override = {
