@@ -1,0 +1,248 @@
+{
+  "brand": "moshcode",
+  "headline": "IS HERE...",
+  "tagline": "Home of the agentic pull request",
+  "sub": "we code in /tmp as root, we use cli only, everything we build has a tui",
+  "blocks": [
+    {
+      "id": "b9da2163-3e9c-40bb-bfed-47adc2938308",
+      "type": "markdown",
+      "content": "```sh\ncurl https://moshcoding.com/install.sh | sh\n```\n\n```js\n// moshscript toolkit\nwhile (alive) {\n  code();\n  mosh();\n  notify();\n  repeat();\n} // no bugs, only features\n```",
+      "enabled": true
+    },
+    {
+      "id": "5466a223-388f-48ba-ad07-4e4413db37d7",
+      "type": "markdown",
+      "content": "## [Scalable development from day 1.](https://github.com/moshcoder/moshcode#install)",
+      "enabled": true
+    }
+  ],
+  "socials": {
+    "x": "chovy",
+    "bluesky": "moshcoding.bsky.social",
+    "tiktok": "chovyfubar",
+    "github": "moshcoder",
+    "youtube": "moshcoding"
+  },
+  "customLinks": [
+    {
+      "label": "moshcoder",
+      "url": "https://mastodon.social/@profullstack"
+    },
+    {
+      "label": "moshcoder",
+      "url": "https://www.twitch.tv/chovyo"
+    },
+    {
+      "label": "app.moshcode.sh",
+      "url": "https://app.moshcode.sh"
+    }
+  ],
+  "hashtags": [
+    "moshcoding",
+    "moshing"
+  ],
+  "sponsors": [
+    {
+      "label": "moshscript",
+      "url": "https://moshscript.com"
+    }
+  ],
+  "audioStream": "https://open.spotify.com/playlist/2FrXlq6ChSIFJ6CyGS0PGI?si=fae7738089ee4840",
+  "videoStream": "https://www.twitch.tv/chovyo",
+  "videos": [
+    {
+      "name": "16x9_under-30s_with-audio.mp4",
+      "url": "/api/media/moshcode.sh/mreuyml0-16x9_under-30s_with-audio.mp4"
+    },
+    {
+      "name": "9x16_under-30s_with-audio.mp4",
+      "url": "/api/media/moshcode.sh/mreuyh2d-9x16_under-30s_with-audio.mp4"
+    }
+  ],
+  "assets": [
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_11 AM (2)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_11 AM (2)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_11%20AM%20(2)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_11 AM (3)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_11 AM (3)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_11%20AM%20(3)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_11 AM (4)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_11 AM (4)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_11%20AM%20(4)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_12 AM (5)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_12 AM (5)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_12%20AM%20(5)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_12 AM (6)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_12 AM (6)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_12%20AM%20(6)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_12 AM (7)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_12 AM (7)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_12%20AM%20(7)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_12 AM (8)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_12 AM (8)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_12%20AM%20(8)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_13 AM (9)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_13 AM (9)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_13%20AM%20(9)_thum     b.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_36 AM (1)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_36 AM (1)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_36%20AM%20(1)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_36 AM (2)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_36 AM (2)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_36%20AM%20(2)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_37 AM (3)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_37 AM (3)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_37%20AM%20(3)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_37 AM (4)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_37 AM (4)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_37%20AM%20(4)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_37 AM (5)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_37 AM (5)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_37%20AM%20(5)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_38 AM (6)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_38 AM (6)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_38%20AM%20(6)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_38 AM (7)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_38 AM (7)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_38%20AM%20(7)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_38 AM (8)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_38 AM (8)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_38%20AM%20(8)_thumb.png"
+    },
+    {
+      "name": "ChatGPT Image Jul 9, 2026, 11_45_38 AM (9)_thumb.png",
+      "path": "images/ChatGPT Image Jul 9, 2026, 11_45_38 AM (9)_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_38%20AM%20(9)_thumb.png"
+    },
+    {
+      "name": "moshcoding_01_playlist_cover_panel_square_thumb.png",
+      "path": "images/moshcoding_01_playlist_cover_panel_square_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_01_playlist_cover_panel_square_thumb.png"
+    },
+    {
+      "name": "moshcoding_01_playlist_cover_panel_thumb.png",
+      "path": "images/moshcoding_01_playlist_cover_panel_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_01_playlist_cover_panel_thumb.png"
+    },
+    {
+      "name": "moshcoding_02_wide_banner_main_thumb.png",
+      "path": "images/moshcoding_02_wide_banner_main_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_02_wide_banner_main_thumb.png"
+    },
+    {
+      "name": "moshcoding_03_coder_workstation_card_thumb.png",
+      "path": "images/moshcoding_03_coder_workstation_card_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_03_coder_workstation_card_thumb.png"
+    },
+    {
+      "name": "moshcoding_04_turn_code_into_chaos_thumb.png",
+      "path": "images/moshcoding_04_turn_code_into_chaos_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_04_turn_code_into_chaos_thumb.png"
+    },
+    {
+      "name": "moshcoding_05_terminal_playlist_ca     rd_thumb.png",
+      "path": "images/moshcoding_05_terminal_playlist_card_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_05_terminal_playlist_card_thumb.png"
+    },
+    {
+      "name": "moshcoding_06_badge_code_hard_square_thumb.png",
+      "path": "images/moshcoding_06_badge_code_hard_square_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_06_badge_code_hard_square_thumb.png"
+    },
+    {
+      "name": "moshcoding_08_badge_push_code_start_pits_square_thumb.png",
+      "path": "images/moshcoding_08_badge_push_code_start_pits_square_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_08_badge_push_code_start_pits_square_thumb.png"
+    },
+    {
+      "name": "moshcoding_08_badge_push_code_start_pits_thumb.png",
+      "path": "images/moshcoding_08_badge_push_code_start_pits_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_08_badge_push_code_start_pits_thumb.png"
+    },
+    {
+      "name": "moshcoding_09_bottom_banner_build_break_mosh_thumb.png",
+      "path": "images/moshcoding_09_bottom_banner_build_break_mosh_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_09_bottom_banner_build_break_mosh_thumb.png"
+    },
+    {
+      "name": "moshcoding_original_01_square_logo_panel_square_thumb.png",
+      "path": "images/moshcoding_original_01_square_logo_panel_square_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_original_01_square_logo_panel_square_thumb.png"
+    },
+    {
+      "name": "moshcoding_original_01_square_logo_panel_thumb.png",
+      "path": "images/moshcoding_original_01_square_logo_panel_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_original_01_square_logo_panel_thumb.png"
+    },
+    {
+      "name": "moshcoding_original_02_wide_banner_thumb.png",
+      "path": "images/moshcoding_original_02_wide_banner_thumb.png",
+      "kind": "image",
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/moshcoding_original_02_wide_banner_thumb.png"
+    }
+  ],
+  "assetPattern": "images/*_thumb.png",
+  "repo": "moshcoder/moshcoding",
+  "headHtml": "<script data-site=\"7fdf1cb0-2240-4709-8896-63262cb35f7f\" src=\"https://crawlproof.com/stats.js\" async></script>"
+}
