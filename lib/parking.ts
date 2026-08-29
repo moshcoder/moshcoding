@@ -34,3 +34,35 @@ export function parkingTarget(sp: ParkingParams): string {
 export function pitNameUrl(name: string): string {
   return `${PIT_BASE_URL}/n/${encodeURIComponent(name)}`;
 }
+
+/**
+ * The whole `/parking?name=<name>` decision, kept out of the route so it can be
+ * tested without a request.
+ *
+ * `ours` is `isMoshpitName()`'s answer, passed in rather than imported: that
+ * module reads PIT_BASE_URL from this one, and asking for it here would close
+ * the cycle.
+ *
+ *   no usable name  → the Pit's front door, which beats a 404
+ *   a Moshpit name  → the Pit's page for it
+ *   anything else   → this app's own parked card, via the one `?dn=` path
+ *
+ * That last branch is the fix for what this route did to every clearnet domain:
+ * `moshscript.com`, a domain we own that resolves and has a full tenant page,
+ * was permanently redirected to a Pit page reading "Nobody holds this name".
+ *
+ * Every other param rides along to the tenant page. Porkbun glues `?ref=` onto
+ * this URL, and the tenant params (`?style=`, `?social_x=`, …) arrive here too.
+ */
+export function parkingRoute(sp: ParkingParams, ours: boolean): string {
+  const name = safeDomain(sp.name ?? sp.dn);
+  if (!name) return `${PIT_BASE_URL}/pit`;
+  if (ours) return pitNameUrl(name);
+
+  const forwarded = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (typeof value === "string" && key !== "name" && key !== "dn") forwarded.set(key, value);
+  }
+  forwarded.set("dn", name);
+  return `/?${forwarded.toString()}`;
+}
