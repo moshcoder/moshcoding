@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mcpGatewayTarget } from "./lib/mcp-gateway";
 
 // Parked domains allowed to frame the app (Porkbun masked/frameset forwarding,
 // e.g. moshcode.sh). Read at RUNTIME so FRAME_ANCESTORS env changes take effect
@@ -32,6 +33,13 @@ export function middleware(req: NextRequest) {
     url.host = apex;
     url.port = "";
     return NextResponse.redirect(url, 308);
+  }
+  const mcpTarget = mcpGatewayTarget(host, req.nextUrl.pathname, req.nextUrl.search);
+  if (mcpTarget) {
+    // A rewrite preserves methods, request bodies, Authorization and streaming
+    // responses. OAuth consent and token endpoints remain on the app origin;
+    // the resource URL the client added remains on moshcode.sh.
+    return NextResponse.rewrite(mcpTarget);
   }
   const res = NextResponse.next();
   res.headers.set("Content-Security-Policy", `frame-ancestors ${frameAncestors(req)}`);
