@@ -18,7 +18,8 @@
 #      resolved at run time, so re-running moves them up to newer releases.
 #   4. Fetches the CLI straight from the public GitHub repo
 #      (github.com/moshcoder/moshcode) into $MOSHCODE_HOME/pkg. moshcode
-#      is dependency-free pure ESM, so there is NO npm/registry step.
+#      is ESM with one runtime dependency since 0.96.0; npm installs it
+#      into the package dir after the tarball is unpacked (install_deps).
 #   5. Drops a wrapper at $HOME/.local/bin/moshcode that runs the CLI
 #      via node and handles update|upgrade|remove|uninstall.
 #
@@ -213,7 +214,7 @@ resolve_ref() {
 }
 
 # ---------------------------------------------------------------------------
-# install the CLI from GitHub (no npm — moshcode is dependency-free ESM)
+# install the CLI from GitHub, then its runtime dependencies (install_deps)
 # ---------------------------------------------------------------------------
 install_cli() {
     for _t in curl tar node; do
@@ -241,8 +242,33 @@ install_cli() {
     [ -d "$PKG_DIR" ] && mv "$PKG_DIR" "$PKG_DIR.old"
     mv "$PKG_DIR.new" "$PKG_DIR"
     rm -rf "$PKG_DIR.old"
+    install_deps
     _ver="$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo '?')"
     ok "moshcode@$_ver installed to $PKG_DIR"
+}
+
+# ---------------------------------------------------------------------------
+# runtime dependencies (moshcode stopped being dependency-free in 0.96.0)
+# ---------------------------------------------------------------------------
+# The header above still says "no npm" and it was true until 0.96.0. From then
+# package.json lists a runtime dependency, the source tarball carries nothing
+# under node_modules, and every install through this script produced a CLI
+# that died on its first import (0.96.0 through 0.98.0). Read package.json
+# with node rather than grep: "devDependencies" contains the word too.
+install_deps() {
+    _pkg="$PKG_DIR/package.json"
+    [ -f "$_pkg" ] || return 0
+    if ! node -e 'const p=require(process.argv[1]);process.exit(Object.keys(p.dependencies||{}).length?0:1)' "$_pkg" 2>/dev/null; then
+        unset _pkg; return 0
+    fi
+    command -v npm >/dev/null 2>&1 || fail "npm is required to install moshcode's dependencies (node was found, npm was not)"
+    info "installing runtime dependencies"
+    if ( cd "$PKG_DIR" && npm install --omit=dev --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ); then
+        ok "dependencies installed"
+    else
+        fail "npm install failed in $PKG_DIR — moshcode would not start without its dependencies"
+    fi
+    unset _pkg
 }
 
 # ---------------------------------------------------------------------------
