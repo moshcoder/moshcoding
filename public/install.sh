@@ -18,8 +18,7 @@
 #      resolved at run time, so re-running moves them up to newer releases.
 #   4. Fetches the CLI straight from the public GitHub repo
 #      (github.com/moshcoder/moshcode) into $MOSHCODE_HOME/pkg. moshcode
-#      is ESM with one runtime dependency since 0.96.0; npm installs it
-#      into the package dir after the tarball is unpacked (install_deps).
+#      needs its runtime dependencies installed with npm before it can start.
 #   5. Drops a wrapper at $HOME/.local/bin/moshcode that runs the CLI
 #      via node and handles update|upgrade|remove|uninstall.
 #
@@ -214,7 +213,7 @@ resolve_ref() {
 }
 
 # ---------------------------------------------------------------------------
-# install the CLI from GitHub, then its runtime dependencies (install_deps)
+# install the CLI from GitHub and its runtime dependencies from npm
 # ---------------------------------------------------------------------------
 install_cli() {
     for _t in curl tar node; do
@@ -234,6 +233,14 @@ install_cli() {
     if [ -z "$_src" ] || [ ! -f "$_src/bin/moshcode.mjs" ]; then
         rm -rf "$_tmp"; fail "bin/moshcode.mjs not found in tarball"
     fi
+    # An archive has no node_modules. Install and verify in staging so a
+    # registry failure or a broken release leaves the current CLI runnable.
+    if ! install_deps "$_src"; then
+        rm -rf "$_tmp"; fail "runtime dependency installation failed — existing installation unchanged."
+    fi
+    if ! node "$_src/bin/moshcode.mjs" --version >/dev/null; then
+        rm -rf "$_tmp"; fail "CLI startup check failed — existing installation unchanged."
+    fi
     rm -rf "$PKG_DIR.new"; mkdir -p "$PKG_DIR.new"
     ( cd "$_src" && tar -cf - . ) | ( cd "$PKG_DIR.new" && tar -xf - )
     rm -rf "$_tmp"
@@ -242,7 +249,6 @@ install_cli() {
     [ -d "$PKG_DIR" ] && mv "$PKG_DIR" "$PKG_DIR.old"
     mv "$PKG_DIR.new" "$PKG_DIR"
     rm -rf "$PKG_DIR.old"
-    install_deps
     _ver="$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo '?')"
     ok "moshcode@$_ver installed to $PKG_DIR"
 }
@@ -250,26 +256,28 @@ install_cli() {
 # ---------------------------------------------------------------------------
 # runtime dependencies (moshcode stopped being dependency-free in 0.96.0)
 # ---------------------------------------------------------------------------
-# The header above still says "no npm" and it was true until 0.96.0. From then
+# Releases before 0.96.0 needed no npm step. From then
 # package.json lists a runtime dependency, the source tarball carries nothing
 # under node_modules, and every install through this script produced a CLI
 # that died on its first import (0.96.0 through 0.98.0). Read package.json
 # with node rather than grep: "devDependencies" contains the word too.
-install_deps() {
-    _pkg="$PKG_DIR/package.json"
+install_deps() (
+    # Run in a subshell so temporary paths cannot change the caller's install
+    # location. Only the checked staging directory is passed here.
+    _deps_dir="$1"
+    _pkg="$_deps_dir/package.json"
     [ -f "$_pkg" ] || return 0
-    if ! node -e 'const p=require(process.argv[1]);process.exit(Object.keys(p.dependencies||{}).length?0:1)' "$_pkg" 2>/dev/null; then
-        unset _pkg; return 0
-    fi
-    command -v npm >/dev/null 2>&1 || fail "npm is required to install moshcode's dependencies (node was found, npm was not)"
+    _needs_deps="$(node -e 'const p=require(process.argv[1]);console.log(Object.keys(p.dependencies||{}).length ? "yes" : "no")' "$_pkg")" \
+        || fail "cannot read the staged package.json."
+    [ "$_needs_deps" = yes ] || return 0
+    command -v npm >/dev/null 2>&1 || fail "npm is required to install moshcode's dependencies (node was found, npm was not)."
     info "installing runtime dependencies"
-    if ( cd "$PKG_DIR" && npm install --omit=dev --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ); then
+    if (cd "$_deps_dir" && npm install --omit=dev --ignore-scripts --no-audit --no-fund --package-lock=false); then
         ok "dependencies installed"
     else
-        fail "npm install failed in $PKG_DIR — moshcode would not start without its dependencies"
+        fail "npm install failed in staging — the new CLI would not start without its dependencies."
     fi
-    unset _pkg
-}
+)
 
 # ---------------------------------------------------------------------------
 # wrapper at $MOSHCODE_BIN/moshcode
