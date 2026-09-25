@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeApiKeyTimestamp } from "@/lib/api-key-time";
 import { db } from "@/lib/db";
 import { requireUser, unauthorized, bad } from "@/lib/api";
 
@@ -20,7 +21,10 @@ export async function POST(req: NextRequest) {
   if (!inv.rows.length) return bad("invitation not found", 404);
   const row: any = inv.rows[0];
   if (row.accepted_at) return bad("invitation already used", 409);
-  if (new Date(row.expires_at + "Z").getTime() < Date.now()) return bad("invitation expired", 410);
+  // expires_at is SQLite's "YYYY-MM-DD HH:MM:SS" on a file database and ISO on
+  // Postgres; normalizeApiKeyTimestamp reads both (a blind + "Z" made the ISO
+  // form Invalid Date, which read as "never expires").
+  if (new Date(normalizeApiKeyTimestamp(String(row.expires_at))).getTime() < Date.now()) return bad("invitation expired", 410);
   if (u.email && String(row.email).toLowerCase() !== u.email.toLowerCase()) {
     return bad("this invitation is for a different email", 403);
   }

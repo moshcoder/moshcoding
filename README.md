@@ -69,8 +69,8 @@ moshcoding.com/?dn=yourdomain.com
   its own origin can only affect its own site. On `moshcoding.com/?dn=<domain>`
   (preview + masked-iframe forwarding) the document is *our* origin and any account
   can park any domain name, so the code stays off there.
-- **Waitlist** — `POST /api/waitlist { email, dn? }`, stored in **libSQL / Turso**
-  (`signups` table, unique per email+domain) via `@libsql/client`. Domain owners
+- **Waitlist** — `POST /api/waitlist { email, dn? }`, stored in **Postgres**
+  (`signups` table, unique per email+domain) via `@profullstack/libsql-pg`. Domain owners
   can filter confirmed/pending signups and export the current view as CSV.
 - **Login** — "Log in with CoinPayPortal" (OAuth2 Auth Code + PKCE); email captured to a
   `users` table. Self-disables until the `COINPAY_*` + `SESSION_SECRET` env vars are set.
@@ -79,24 +79,24 @@ moshcoding.com/?dn=yourdomain.com
 ### Run it (Bun)
 
 ```bash
-cp .env.example .env      # fill in TURSO + COINPAY + SESSION vars
+cp .env.example .env      # fill in DATABASE_URL + COINPAY + SESSION vars
 bun install
 bun run dev               # http://localhost:8080
 # tenant demo:            http://localhost:8080/?dn=killer-startup.io
 ```
 
-Env: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` (required) · `COINPAY_ISSUER`,
+Env: `DATABASE_URL` (required; `postgres://...`, or `file:...` locally) · `COINPAY_ISSUER`,
 `COINPAY_CLIENT_ID`, `COINPAY_CLIENT_SECRET`, `SESSION_SECRET`, `APP_BASE_URL` (for login) ·
 `PORT` (default 8080) · `MOSHPIT_RESOLVE_MODE` (`clearnet` default — a real
 extension outranks the pit; `moshpit` lets a registered name win anyway, see
-[docs/moshpit-dns.md](docs/moshpit-dns.md)). Turso tables are created
+[docs/moshpit-dns.md](docs/moshpit-dns.md)). Tables are created
 automatically on first request.
 
 ### Deploy (Railway)
 
 Builds from the **Dockerfile** (`oven/bun` → `bun run build` → `bun run start`);
 `railway.json` sets the start command + `/api/me` health check. Set the env vars above in
-the service variables — no volume needed, Turso is the database.
+the service variables — no volume needed, Postgres is the database.
 
 ## Moshpit DNS
 

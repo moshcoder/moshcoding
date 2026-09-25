@@ -4,6 +4,9 @@
 // env changes apply without a rebuild.
 const nextConfig = {
   reactStrictMode: true,
+  // The database drivers stay out of the server bundle: pg (under
+  // @profullstack/libsql-pg) and, for local file: databases, the native libSQL client.
+  serverExternalPackages: ["@profullstack/libsql-pg", "pg", "@libsql/client"],
   // brand assets are large PNGs served straight from /public
   poweredByHeader: false,
 };

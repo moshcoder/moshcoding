@@ -1,6 +1,6 @@
 // The resolver's client for the Moshpit registry.
 //
-// Over HTTP rather than straight into Turso on purpose. The registry is
+// Over HTTP rather than straight into the database on purpose. The registry is
 // authoritative and the gateway is not (PRD 0004 R2), and that boundary only
 // means something if a resolver is a *reader* of the registry — which is what
 // makes it self-hostable by anyone (R8) without handing out database

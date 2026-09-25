@@ -1,4 +1,8 @@
-/** Normalize timestamps written by SQLite's datetime() as UTC ISO strings. */
+/**
+ * Normalize timestamps written by SQLite's datetime() ("YYYY-MM-DD HH:MM:SS",
+ * UTC) as ISO strings; a value that is already ISO (what Postgres returns) is
+ * passed through.
+ */
 export function normalizeApiKeyTimestamp(value: string): string {
   return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
     ? `${value.replace(" ", "T")}Z`
