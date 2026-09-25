@@ -1,6 +1,6 @@
 // Uploaded media (mp4 reels & clips). Bytes live on the filesystem under
 // DATA_DIR — the SAME Railway volume that caches generated hero images
-// (see lib/genart.ts) — while the row metadata lives in Turso (lib/db.ts).
+// (see lib/genart.ts) — while the row metadata lives in the database (lib/db.ts).
 // Mount a volume at DATA_DIR in production or uploads won't survive a redeploy.
 import fs from "node:fs";
 import path from "node:path";

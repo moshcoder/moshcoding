@@ -1,15 +1,49 @@
-import { createClient, type Client } from "@libsql/client";
+import type { Client } from "@libsql/client";
+import { createClient as createPostgresClient } from "@profullstack/libsql-pg";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import type { WaitlistSort } from "./waitlist-filter";
 
 let _db: Client | undefined;
+const POSTGRES_URL = /^postgres(ql)?:\/\//i;
+const require_ = createRequire(import.meta.url);
 
-/** Lazily-created singleton libSQL/Turso client. */
+/**
+ * The database URL: `DATABASE_URL=postgres://...` in production (the shared
+ * Postgres cluster on dev2) or a `file:` path for local runs and the tests.
+ * `TURSO_DATABASE_URL` is still read as a fallback name for a `file:` URL; a
+ * `libsql://` value is refused, because the data left Turso for Postgres in
+ * 2026-09.
+ */
+export function databaseUrl(): string {
+  const url = process.env.DATABASE_URL || process.env.TURSO_DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is not set (postgres://... in production, file:... locally)");
+  if (!POSTGRES_URL.test(url) && !url.startsWith("file:")) {
+    throw new Error(
+      `DATABASE_URL must be a postgres:// URL (production) or a file: path (local); got "${url.split(":")[0]}:". ` +
+        "Turso/libsql:// is no longer supported: the data lives in Postgres now.",
+    );
+  }
+  return url;
+}
+
+/**
+ * Lazily-created singleton client. Postgres goes through @profullstack/libsql-pg,
+ * which keeps the @libsql/client surface every query here was written against
+ * and rewrites the SQLite idioms per statement (the CREATE TABLEs in initSchema
+ * go through its schema converter). A `file:` URL loads @libsql/client lazily:
+ * it is a devDependency, so the production image needs neither it nor its
+ * native binding.
+ */
 export function db(): Client {
   if (_db) return _db;
-  const url = process.env.TURSO_DATABASE_URL;
-  if (!url) throw new Error("TURSO_DATABASE_URL is not set");
-  _db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+  const url = databaseUrl();
+  if (POSTGRES_URL.test(url)) {
+    _db = createPostgresClient({ url }) as unknown as Client;
+  } else {
+    const { createClient } = require_("@libsql/client") as typeof import("@libsql/client");
+    _db = createClient({ url });
+  }
   return _db;
 }
 
@@ -457,12 +491,16 @@ async function initSchema(): Promise<void> {
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_media_dn ON media (dn, created_at)`);
 }
 
-/** Adds ADD COLUMN, ignoring the error when the column already exists. */
+/**
+ * Adds ADD COLUMN, ignoring the error when the column already exists (SQLite's
+ * "duplicate column name"; on Postgres the client rewrites the statement to
+ * ADD COLUMN IF NOT EXISTS, and the message form is covered anyway).
+ */
 async function addColumnIfMissing(table: string, column: string, type: string): Promise<void> {
   try {
     await db().execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   } catch (err: any) {
-    if (!/duplicate column name/i.test(String(err?.message))) throw err;
+    if (!/duplicate column name|already exists/i.test(String(err?.message))) throw err;
   }
 }
 
@@ -1099,9 +1137,11 @@ export async function listDomainSignups(
 ): Promise<{ email: string; verified: boolean; ref: string | null; created_at: string }[]> {
   await ensureSchema();
   const orderBy: Record<WaitlistSort, string> = {
-    newest: "created_at DESC, email COLLATE NOCASE ASC, email ASC",
-    oldest: "created_at ASC, email COLLATE NOCASE ASC, email ASC",
-    email: "email COLLATE NOCASE ASC, email ASC, created_at DESC",
+    // lower(email) rather than COLLATE NOCASE: Postgres has no such collation,
+    // and lower() sorts the same way on both databases.
+    newest: "created_at DESC, lower(email) ASC, email ASC",
+    oldest: "created_at ASC, lower(email) ASC, email ASC",
+    email: "lower(email) ASC, email ASC, created_at DESC",
   };
   const res = await db().execute({
     sql: `SELECT email, verified_at, ref, created_at FROM signups WHERE dn = ? ORDER BY ${orderBy[sort]} LIMIT ?`,

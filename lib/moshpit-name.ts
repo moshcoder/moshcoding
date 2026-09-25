@@ -1,7 +1,7 @@
 // Validation and policy for Moshpit TLD names.
 //
 // Deliberately free of any database import so it can be tested — and reused by
-// a client — without a Turso connection. lib/moshpit.ts owns the storage.
+// a client — without a database connection. lib/moshpit.ts owns the storage.
 
 /**
  * Names nobody may claim, whatever the PRD's first-come-first-served rule says.
