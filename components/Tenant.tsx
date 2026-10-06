@@ -1,4 +1,5 @@
 import type { TenantConfig } from "@/lib/config";
+import Script from "next/script";
 import WaitlistForm from "./WaitlistForm";
 import AffiliateJoin from "./AffiliateJoin";
 import SharePost from "./SharePost";
@@ -6,6 +7,13 @@ import LinkIcon, { kindFromUrl } from "./LinkIcon";
 import CrawlProofAd from "./CrawlProofAd";
 import CodeCopy from "./CodeCopy";
 import { renderMarkdown } from "@/lib/markdown";
+
+/**
+ * The crawlproof.com project for the whole Moshpit network. Every parked page
+ * reports to it as well as to moshcoding.com's own tag in the root layout, so
+ * one project counts the pit's /n/<name> pages and the parked domains alike.
+ */
+export const MOSHPIT_STATS_SITE = "2cbffe9d-1b6e-43f0-85f3-3cadee132048";
 
 export default function Tenant({ cfg }: { cfg: TenantConfig }) {
   const accentStyle = {
@@ -20,6 +28,9 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           hostname — configFor nulls these out everywhere else. */}
       {cfg.customCss && <style dangerouslySetInnerHTML={{ __html: cfg.customCss }} />}
       {cfg.headHtml && <div className="t-inject" dangerouslySetInnerHTML={{ __html: cfg.headHtml }} />}
+      {/* Its own id: next/script dedupes on id || src, and the layout already
+          loads this src for moshcoding.com's project. */}
+      <Script id="moshpit-network-stats" data-site={MOSHPIT_STATS_SITE} src="https://crawlproof.com/stats.js" strategy="afterInteractive" />
       <div className="tenant-wrap">
         <a className="powered" href="https://moshcoding.com" target="_blank" rel="noopener noreferrer">⚡ powered by <b>#moshcoding</b></a>
         {cfg.styles.length > 0 && (
