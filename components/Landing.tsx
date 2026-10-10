@@ -102,7 +102,8 @@ export default function Landing() {
         <nav className="webring legal" aria-label="Profullstack webring">
           <a href="https://rssamplifier.com/ring/profullstack/previous?from=https%3A%2F%2Fmoshcoding.com%2F" rel="prev">{"<<"}</a>{" "}
           <a href="https://rssamplifier.com/ring/profullstack">Profullstack</a>{" "}
-          <a href="https://rssamplifier.com/ring/profullstack/next?from=https%3A%2F%2Fmoshcoding.com%2F" rel="next">{">>"}</a>
+          <a href="https://rssamplifier.com/ring/profullstack/next?from=https%3A%2F%2Fmoshcoding.com%2F" rel="next">{">>"}</a>{" "}
+          <a href="https://rssamplifier.com/ring/profullstack/random?from=https%3A%2F%2Fmoshcoding.com%2F" title="Random site" aria-label="Random site">{"⚄"}</a>
         </nav>
       </footer>
     </div>
