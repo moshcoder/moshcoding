@@ -1,3 +1,4 @@
+import { Footer as ProfullstackFooter } from "@profullstack/footer/react";
 import Nav from "./Nav";
 import SummonDemo from "./SummonDemo";
 import WaitlistForm from "./WaitlistForm";
@@ -93,19 +94,13 @@ export default function Landing() {
         <WaitlistForm />
       </section>
 
-      <footer className="foot">
+      <div className="foot">
         <a className="wm sm" href="/">#MOSHCODING</a>
-        <p className="legal">
-          &copy; 2026 <a href="https://moshcoding.com" rel="noopener noreferrer">powered by moshcoding.com</a> ·
-          Profullstack, Inc. (dba moshcoding)
-        </p>
-        <nav className="webring legal" aria-label="Profullstack webring">
-          <a href="https://rssamplifier.com/ring/profullstack/previous?from=https%3A%2F%2Fmoshcoding.com%2F" rel="prev">{"<<"}</a>{" "}
-          <a href="https://rssamplifier.com/ring/profullstack">Profullstack</a>{" "}
-          <a href="https://rssamplifier.com/ring/profullstack/next?from=https%3A%2F%2Fmoshcoding.com%2F" rel="next">{">>"}</a>{" "}
-          <a href="https://rssamplifier.com/ring/profullstack/random?from=https%3A%2F%2Fmoshcoding.com%2F" title="Random site" aria-label="Random site">{"⚄"}</a>
-        </nav>
-      </footer>
+        {/* Copyright + Profullstack ring nav, rendered server-side from the shared @latest template. */}
+        <div className="legal">
+          <ProfullstackFooter site="https://moshcoding.com/" tagline="dba moshcoding" />
+        </div>
+      </div>
     </div>
   );
 }

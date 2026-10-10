@@ -196,6 +196,8 @@ h2 { font-family: var(--display); font-weight: 400; text-transform: uppercase; f
 .legal { font-family: var(--mono); font-size: 12px; color: var(--ash); margin: 0; }
 .legal a { color: var(--acid); }
 .legal a:hover { text-decoration: underline; }
+.foot .pfs-footer { border-top: 0; }
+.foot .pfs-footer__inner { padding: 0; }
 
 /* tenant mode */
 .tenant { min-height: 100vh; display: grid; place-items: center; padding: 24px; background-color: var(--tenant-bg-accent, transparent); }
