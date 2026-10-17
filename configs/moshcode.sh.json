@@ -27,10 +27,6 @@
   "customLinks": [
     {
       "label": "moshcoder",
-      "url": "https://mastodon.social/@profullstack"
-    },
-    {
-      "label": "moshcoder",
       "url": "https://www.twitch.tv/chovyo"
     },
     {
@@ -107,7 +103,7 @@
       "name": "ChatGPT Image Jul 9, 2026, 11_45_13 AM (9)_thumb.png",
       "path": "images/ChatGPT Image Jul 9, 2026, 11_45_13 AM (9)_thumb.png",
       "kind": "image",
-      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_13%20AM%20(9)_thum     b.png"
+      "url": "https://raw.githubusercontent.com/moshcoder/moshcoding/master/images/ChatGPT%20Image%20Jul%209%2C%202026%2C%2011_45_13%20AM%20(9)_thumb.png"
     },
     {
       "name": "ChatGPT Image Jul 9, 2026, 11_45_36 AM (1)_thumb.png",
