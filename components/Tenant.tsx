@@ -48,6 +48,10 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         <p className="t-tag">{cfg.tagline}</p>
         <p className="t-sub">{cfg.sub}</p>
 
+        {/* The ad sits at the top of the content, under the heading block,
+            never down by the footer. */}
+        {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
+
         {(cfg.audioStream || cfg.videoStream) && (
           <div className="t-streams">
             {cfg.audioStream && (
@@ -137,8 +141,6 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
             it's just a same-origin nav. Either way the ?bid query survives, which
             a target=_top break-out to a masked domain would drop. */}
         <a className="t-bid" href={`/?bid=${encodeURIComponent(cfg.dn)}`}>💰 Bid on this domain</a>
-
-        {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
         <footer className="t-foot">
           &copy; 2026 <a href="https://moshcoding.com" target="_blank" rel="noopener noreferrer">powered by moshcoding.com</a>
