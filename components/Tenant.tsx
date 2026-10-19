@@ -48,7 +48,8 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         <p className="t-tag">{cfg.tagline}</p>
         <p className="t-sub">{cfg.sub}</p>
 
-        {/* The page's one ad: under the masthead, never against the footer. */}
+        {/* The ad sits at the top of the content, under the heading block,
+            never down by the footer. */}
         {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
 
         {(cfg.audioStream || cfg.videoStream) && (
