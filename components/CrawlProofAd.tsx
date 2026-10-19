@@ -9,9 +9,24 @@ import { useEffect } from "react";
  * the loader scans the DOM for [data-cp-ad] and fills them in. The div is in
  * the SSR HTML, so it exists before the async loader runs.
  */
-export default function CrawlProofAd({ slot, format }: { slot: string; format: string }) {
+export default function CrawlProofAd({
+  slot,
+  format,
+  network,
+  className,
+}: {
+  slot: string;
+  format: string;
+  /** ad.network claim code: renders the unit as <aside data-ad-network=…>. */
+  network?: string;
+  className?: string;
+}) {
   useEffect(() => {
-    if (document.querySelector("script[data-cp-loader]")) return;
+    if (document.querySelector("script[data-cp-loader]")) {
+      // ad.js already ran (client-side navigation): ask it to fill this unit.
+      (window as unknown as { crawlproofAds?: { scan?: () => void } }).crawlproofAds?.scan?.();
+      return;
+    }
     const s = document.createElement("script");
     s.src = "https://crawlproof.com/ad.js";
     s.async = true;
@@ -20,8 +35,12 @@ export default function CrawlProofAd({ slot, format }: { slot: string; format: s
   }, []);
 
   return (
-    <div className="t-ad" aria-label="Advertisement">
-      <div data-cp-ad data-slot={slot} data-format={format} />
+    <div className={className ? `t-ad ${className}` : "t-ad"} aria-label="Advertisement">
+      {network ? (
+        <aside data-ad-network={network} data-cp-ad data-slot={slot} data-format={format} />
+      ) : (
+        <div data-cp-ad data-slot={slot} data-format={format} />
+      )}
     </div>
   );
 }

@@ -3,6 +3,10 @@ import Nav from "./Nav";
 import SummonDemo from "./SummonDemo";
 import WaitlistForm from "./WaitlistForm";
 import QueryHelp from "./QueryHelp";
+import CrawlProofAd from "./CrawlProofAd";
+
+/** ad.network claim code for moshcoding.com (also in the home page <meta name="ad.network">). */
+export const AD_NETWORK_CODE = "QhCDYMsgknhT00bM";
 
 const TICKER = ["BUILD. BREAK. REPEAT.", "NO BUGS, JUST FEATURES", "DEADLINES ARE FOR THE WEAK", "PUSH CODE, START PITS"];
 
@@ -68,6 +72,13 @@ export default function Landing() {
           {" "}<QueryHelp />
         </div>
       </section>
+
+      <CrawlProofAd
+        slot="78258a1c-f21e-4671-ab26-d33c0a137c7d"
+        format="banner_300x250"
+        network={AD_NETWORK_CODE}
+        className="landing-ad"
+      />
 
       <section id="badges" className="badges">
         <a href="/badges"><figure><img src="/assets/badge-code-hard.png" alt="Code Hard badge" /><figcaption>Code Hard</figcaption></figure></a>

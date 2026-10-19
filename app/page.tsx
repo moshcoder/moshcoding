@@ -5,7 +5,7 @@ import { configFor, safeDomain } from "@/lib/config";
 import { isMoshpitName } from "@/lib/moshpit-tlds";
 import { pitNameUrl } from "@/lib/parking";
 import { getTenantConfig } from "@/lib/db";
-import Landing from "@/components/Landing";
+import Landing, { AD_NETWORK_CODE } from "@/components/Landing";
 import Tenant from "@/components/Tenant";
 import BidPage from "@/components/BidPage";
 
@@ -39,7 +39,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const sp = (await searchParams) || {};
   const dn = safeDomain(sp.dn) || (await hostTenantDn());
-  if (!dn) return {};
+  // The landing page: ad.network verifies the claim from the raw HTML <head>.
+  if (!dn) return { other: { "ad.network": AD_NETWORK_CODE } };
   const tenantOverride = await getTenantConfig(dn).catch(() => null);
   const cfg = configFor(dn, {
     tenantOverride, brand: sp.brand, headline: sp.headline, tagline: sp.tagline,
