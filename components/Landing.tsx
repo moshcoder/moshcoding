@@ -1,3 +1,4 @@
+import { Footer as ProfullstackFooter } from "@profullstack/footer/react";
 import Nav from "./Nav";
 import SummonDemo from "./SummonDemo";
 import WaitlistForm from "./WaitlistForm";
@@ -106,10 +107,19 @@ export default function Landing() {
 
       <div className="foot">
         <a className="wm sm" href="/">#MOSHCODING</a>
-        <p className="legal">
-          &copy; 2026 Profullstack, Inc. dba moshcoding · <a href="/badges">Badges</a> ·{" "}
-          <a href="/videos">Videos</a> · <a href="https://github.com/moshcoder">GitHub</a>
-        </p>
+        {/* Links, the << Profullstack >> ring nav and the copyright, rendered server-side
+            from the shared @latest template (the ring verifier reads raw HTML). */}
+        <div className="legal">
+          <ProfullstackFooter
+            site="https://moshcoding.com/"
+            links={[
+              { label: "Badges", href: "/badges" },
+              { label: "Videos", href: "/videos" },
+              { label: "GitHub", href: "https://github.com/moshcoder" },
+            ]}
+            tagline="dba moshcoding"
+          />
+        </div>
       </div>
     </div>
   );

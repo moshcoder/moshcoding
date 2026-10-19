@@ -12,6 +12,7 @@
     "dns": "bun run scripts/moshpit-dns.ts"
   },
   "dependencies": {
+    "@profullstack/footer": "latest",
     "@profullstack/libsql-pg": "^0.1.3",
     "@profullstack/stack": "0.1.3",
     "next": "15.5.27",
