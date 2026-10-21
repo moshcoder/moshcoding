@@ -49,8 +49,9 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         <p className="t-sub">{cfg.sub}</p>
 
         {/* The ad sits at the top of the content, under the heading block,
-            never down by the footer. */}
-        {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format={cfg.adFormat} />}
+            never down by the footer. Always the low-profile text_link line,
+            whatever format a saved ad_block names. */}
+        {cfg.adSlot && <CrawlProofAd slot={cfg.adSlot} format="text_link" />}
 
         {(cfg.audioStream || cfg.videoStream) && (
           <div className="t-streams">
