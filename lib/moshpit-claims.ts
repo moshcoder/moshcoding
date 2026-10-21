@@ -39,12 +39,25 @@ export type TldClaim = {
  * because of a hold that already lapsed, and the answer a caller gets should
  * not depend on when the cleaner last ran.
  */
+/**
+ * A UTC timestamp in SQLite's `datetime()` text form ("YYYY-MM-DD HH:MM:SS").
+ *
+ * Computed here rather than in SQL: on Postgres (through libsql-pg) the
+ * translated `datetime('now')` is a timestamptz, and comparing it with the
+ * TEXT `expires_at` column fails with "operator does not exist: text <=
+ * timestamp with time zone", which 500ed every availability lookup and claim.
+ * Text in the same fixed-width form compares correctly on both engines.
+ */
+export function sqlTime(date: Date = new Date()): string {
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
 export async function sweepExpiredClaims(): Promise<number> {
   await ensureSchema();
   const r = await db().execute({
     sql: `UPDATE moshpit_tld_claims SET status = 'expired'
-          WHERE status = 'pending' AND expires_at <= datetime('now')`,
-    args: [],
+          WHERE status = 'pending' AND expires_at <= ?`,
+    args: [sqlTime()],
   });
   return r.rowsAffected ?? 0;
 }
@@ -134,8 +147,15 @@ export async function openClaim(opts: {
   try {
     await db().execute({
       sql: `INSERT INTO moshpit_tld_claims (id, tld, account_id, owner_email, amount_usd, expires_at)
-            VALUES (?,?,?,?,?, datetime('now', ?))`,
-      args: [id, tld, opts.accountId, opts.ownerEmail ?? null, opts.amountUsd, `+${opts.holdMinutes} minutes`],
+            VALUES (?,?,?,?,?,?)`,
+      args: [
+        id,
+        tld,
+        opts.accountId,
+        opts.ownerEmail ?? null,
+        opts.amountUsd,
+        sqlTime(new Date(Date.now() + opts.holdMinutes * 60_000)),
+      ],
     });
   } catch {
     const held = await openClaimForTld(tld);
@@ -222,15 +242,15 @@ export async function finalizeClaim(paymentId: string): Promise<FinalizeResult> 
       // settled, seen from the other side. Not a refund.
       if (String((owner.rows[0] as any)?.account_id ?? "") === claim.account_id) {
         await db().execute({
-          sql: `UPDATE moshpit_tld_claims SET status = 'registered', settled_at = datetime('now') WHERE id = ?`,
-          args: [claim.id],
+          sql: `UPDATE moshpit_tld_claims SET status = 'registered', settled_at = ? WHERE id = ?`,
+          args: [sqlTime(), claim.id],
         });
         return { claim: { ...claim, status: "registered" } };
       }
 
       await db().execute({
-        sql: `UPDATE moshpit_tld_claims SET status = 'refund_due', settled_at = datetime('now') WHERE id = ?`,
-        args: [claim.id],
+        sql: `UPDATE moshpit_tld_claims SET status = 'refund_due', settled_at = ? WHERE id = ?`,
+        args: [sqlTime(), claim.id],
       });
       console.error(
         `moshpit claim ${claim.id}: paid ${claim.amount_usd} USD for .${claim.tld} (payment ${paymentId}) ` +
@@ -242,8 +262,8 @@ export async function finalizeClaim(paymentId: string): Promise<FinalizeResult> 
   }
 
   await db().execute({
-    sql: `UPDATE moshpit_tld_claims SET status = 'registered', settled_at = datetime('now') WHERE id = ?`,
-    args: [claim.id],
+    sql: `UPDATE moshpit_tld_claims SET status = 'registered', settled_at = ? WHERE id = ?`,
+    args: [sqlTime(), claim.id],
   });
   return { claim: { ...claim, status: "registered" }, tld: result.tld };
 }
