@@ -14,6 +14,7 @@
 // arrives, the registration correctly fails and the claim becomes a refund.
 
 import { db, ensureSchema } from "./db";
+import { sqlTime } from "./sql-time";
 import { registerTld, normalizeTld, tldRejection, type MoshpitTld } from "./moshpit";
 
 export type ClaimStatus = "pending" | "registered" | "expired" | "refund_due";
@@ -39,18 +40,7 @@ export type TldClaim = {
  * because of a hold that already lapsed, and the answer a caller gets should
  * not depend on when the cleaner last ran.
  */
-/**
- * A UTC timestamp in SQLite's `datetime()` text form ("YYYY-MM-DD HH:MM:SS").
- *
- * Computed here rather than in SQL: on Postgres (through libsql-pg) the
- * translated `datetime('now')` is a timestamptz, and comparing it with the
- * TEXT `expires_at` column fails with "operator does not exist: text <=
- * timestamp with time zone", which 500ed every availability lookup and claim.
- * Text in the same fixed-width form compares correctly on both engines.
- */
-export function sqlTime(date: Date = new Date()): string {
-  return date.toISOString().slice(0, 19).replace("T", " ");
-}
+export { sqlTime };
 
 export async function sweepExpiredClaims(): Promise<number> {
   await ensureSchema();

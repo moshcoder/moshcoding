@@ -14,6 +14,7 @@
 
 import crypto from "node:crypto";
 import { db, ensureSchema } from "./db";
+import { sqlTime } from "./sql-time";
 
 /** Recognisable in a log or an env var, and greppable in a leak scan. */
 const PREFIX = "mpk_";
@@ -103,7 +104,7 @@ export async function accountIdForToken(token: string | null | undefined): Promi
   // Best-effort: a failed timestamp update must not fail the request it was
   // recording. The write is only there so an unused key can be spotted later.
   db()
-    .execute({ sql: `UPDATE account_api_keys SET last_used = datetime('now') WHERE id = ?`, args: [row.id] })
+    .execute({ sql: `UPDATE account_api_keys SET last_used = ? WHERE id = ?`, args: [sqlTime(), row.id] })
     .catch(() => {});
 
   return row.account_id;
@@ -130,9 +131,9 @@ export async function listApiKeys(accountId: string): Promise<ApiKeyRow[]> {
 export async function revokeApiKey(accountId: string, id: string): Promise<boolean> {
   await ensureSchema();
   const done = await db().execute({
-    sql: `UPDATE account_api_keys SET revoked_at = datetime('now')
+    sql: `UPDATE account_api_keys SET revoked_at = ?
           WHERE id = ? AND account_id = ? AND revoked_at IS NULL`,
-    args: [id, accountId],
+    args: [sqlTime(), id, accountId],
   });
   return (done.rowsAffected ?? 0) > 0;
 }

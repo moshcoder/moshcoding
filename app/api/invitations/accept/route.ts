@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeApiKeyTimestamp } from "@/lib/api-key-time";
 import { db } from "@/lib/db";
+import { sqlTime } from "@/lib/sql-time";
 import { requireUser, unauthorized, bad } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -34,6 +35,6 @@ export async function POST(req: NextRequest) {
           ON CONFLICT (team_id, user_sub) DO UPDATE SET role = excluded.role`,
     args: [row.team_id, u.sub, row.role],
   });
-  await db().execute({ sql: `UPDATE team_invitations SET accepted_at = datetime('now') WHERE id = ?`, args: [row.id] });
+  await db().execute({ sql: `UPDATE team_invitations SET accepted_at = ? WHERE id = ?`, args: [sqlTime(), row.id] });
   return NextResponse.json({ ok: true, team_id: row.team_id, role: row.role });
 }
