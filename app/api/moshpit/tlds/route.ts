@@ -70,6 +70,10 @@ export async function POST(req: NextRequest) {
     return bad("claiming is temporarily unavailable", 503);
   }
 
+  // CoinPay checkout needs the payer's email; native accounts always have one.
+  const email = account?.email?.trim() || "";
+  if (!email) return bad("add an email to your account before claiming an ending", 400);
+
   const reserved = await openClaim({
     tld: body?.tld,
     accountId,
@@ -82,7 +86,7 @@ export async function POST(req: NextRequest) {
   }
   const claim = reserved.claim;
 
-  // Re-entering an unfinished checkout returns the same payment rather than a
+  // Re-entering an unfinished checkout returns the same checkout rather than a
   // second one: the hold is already this account's, and charging twice for one
   // ending is worse than any duplicate-click handling is worth.
   if (claim.payment_id) {
@@ -106,11 +110,12 @@ export async function POST(req: NextRequest) {
     payment = await createClaimPayment({
       claimId: claim.id,
       accountId,
-      email: account?.email ?? null,
+      email,
       tld: claim.tld,
       amount: CLAIM_PRICE_USD,
       holdMinutes: CLAIM_HOLD_MINUTES,
-      redirectUrl: `${base}/pit?claim=${encodeURIComponent(claim.id)}`,
+      successUrl: `${base}/pit?claim=${encodeURIComponent(claim.id)}&session={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${base}/pit?claim=${encodeURIComponent(claim.id)}&cancelled=1`,
     });
   } catch (err: any) {
     // Free the ending immediately. Leaving the hold to expire would park a name

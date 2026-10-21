@@ -13,7 +13,8 @@ import { payConfigured, claimPriceUsd, formatUsd } from "@/lib/coinpay";
 function priceFields() {
   if (!payConfigured()) return { price_usd: null, currency: null };
   try {
-    return { price_usd: formatUsd(claimPriceUsd()), currency: process.env.COINPAY_PAY_CHAIN || "USDC_POL" };
+    // Priced in USD; the hosted checkout takes any coin we have a wallet for, or PayPal.
+    return { price_usd: formatUsd(claimPriceUsd()), currency: "USD" };
   } catch {
     return { price_usd: null, currency: null };
   }
