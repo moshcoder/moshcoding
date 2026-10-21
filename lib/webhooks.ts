@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { db, activeDomainWebhooks } from "./db";
+import { sqlTime } from "./sql-time";
 import { isInternalUrl, isSelfWebhookUrl } from "./url-guard";
 import { RELAY_HOP_HEADER } from "./webhook-events";
 export { newSecret, signWebhook, verifyWebhook } from "./webhook-signing";
@@ -118,11 +119,11 @@ async function recordDelivery(
   await db().execute({
     sql: `INSERT INTO webhook_deliveries
             (endpoint_id, event_type, payload, idempotency_key, status, attempts, response_status, last_error, delivered_at, next_attempt_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?='delivered' THEN datetime('now') END, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (endpoint_id, idempotency_key) DO UPDATE SET
             status=excluded.status, attempts=webhook_deliveries.attempts+1,
             response_status=excluded.response_status, last_error=excluded.last_error,
             next_attempt_at=excluded.next_attempt_at`,
-    args: [endpointId, type, body, idem, status, attempts, responseStatus, err, status, nextAttempt],
+    args: [endpointId, type, body, idem, status, attempts, responseStatus, err, status === "delivered" ? sqlTime() : null, nextAttempt],
   });
 }

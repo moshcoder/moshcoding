@@ -3,6 +3,7 @@ import { createClient as createPostgresClient } from "@profullstack/libsql-pg";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import type { WaitlistSort } from "./waitlist-filter";
+import { sqlTime } from "./sql-time";
 
 let _db: Client | undefined;
 const POSTGRES_URL = /^postgres(ql)?:\/\//i;
@@ -563,10 +564,10 @@ export async function verifySignup(token: string): Promise<{ email: string; dn: 
   await ensureSchema();
   const res = await db().execute({
     sql: `UPDATE signups
-             SET verified_at = COALESCE(verified_at, datetime('now')), token = NULL
+             SET verified_at = COALESCE(verified_at, ?), token = NULL
            WHERE token = ?
            RETURNING email, dn`,
-    args: [token],
+    args: [sqlTime(), token],
   });
   const row = res.rows[0];
   if (!row) return null;
@@ -705,8 +706,8 @@ export async function findOrCreateAccountByEmail(email: string): Promise<Account
   if (admin && (!acct.is_admin || acct.status !== "active")) {
     const res = await db().execute({
       sql: `UPDATE accounts SET is_admin = 1, status = 'active', plan = 'pro',
-                 paid_at = COALESCE(paid_at, datetime('now')) WHERE id = ? RETURNING *`,
-      args: [acct.id],
+                 paid_at = COALESCE(paid_at, ?) WHERE id = ? RETURNING *`,
+      args: [sqlTime(), acct.id],
     });
     acct = rowToAccount(res.rows[0]);
   }
@@ -1171,10 +1172,10 @@ export async function activateAccount(opts: { accountId?: string }): Promise<Acc
   const res = await db().execute({
     sql: `UPDATE accounts
              SET status = 'active', plan = 'pro',
-                 paid_at = COALESCE(paid_at, datetime('now'))
+                 paid_at = COALESCE(paid_at, ?)
            WHERE id = ?
            RETURNING *`,
-    args: [opts.accountId],
+    args: [sqlTime(), opts.accountId],
   });
   return res.rows[0] ? rowToAccount(res.rows[0]) : null;
 }
@@ -1193,8 +1194,8 @@ export async function accountForResetToken(token: string): Promise<string | null
   if (!token) return null;
   await ensureSchema();
   const res = await db().execute({
-    sql: `SELECT id FROM accounts WHERE reset_token = ? AND reset_expires > datetime('now')`,
-    args: [token],
+    sql: `SELECT id FROM accounts WHERE reset_token = ? AND reset_expires > ?`,
+    args: [token, sqlTime()],
   });
   return res.rows[0] ? String(res.rows[0].id) : null;
 }
