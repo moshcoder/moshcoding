@@ -1,12 +1,13 @@
 // Server-to-server CoinPayPortal payments for claiming a Moshpit ending.
 //
 // The HTTP client is `createCoinPayClient` from @profullstack/stack/coinpay:
-//   POST <ISSUER>/api/payments/create   Authorization: Bearer <cp_live_ key>
-//     -> { payment: { id, status, ... } }
-//   Hosted pay page  = <ISSUER>/pay/<id>   (constructed from the returned id)
-//   Confirmation     = webhook signed "X-CoinPay-Signature: t=<ts>,v1=<hmac>"
-//                      (verified with verifyCoinPayWebhook in the webhook route),
-//                      event "payment.confirmed".
+//   POST <ISSUER>/api/checkout/sessions  Authorization: Bearer <cp_live_ key>
+//     -> { id: "cs_...", url, methods }
+//   Hosted checkout = <ISSUER>/checkout/<cs_id>: the buyer picks any coin the
+//                     business has a wallet for, or PayPal.
+//   Confirmation    = webhook signed "X-CoinPay-Signature: t=<ts>,v1=<hmac>"
+//                     (verified in the webhook route); its data carries
+//                     checkout_session_id, customer_email, account_id, property.
 //
 // When COINPAY_API_KEY is unset (local dev / not yet provisioned) payConfigured()
 // is false and callers register without charging, so the flow is testable
@@ -18,7 +19,9 @@ import { createCoinPayClient } from "@profullstack/stack/coinpay";
 const ISSUER = (process.env.COINPAY_ISSUER || "https://coinpayportal.com").replace(/\/+$/, "");
 const API_KEY = process.env.COINPAY_API_KEY || "";
 const BUSINESS_ID = process.env.COINPAY_BUSINESS_ID || "";
-const PAY_CHAIN = process.env.COINPAY_PAY_CHAIN || "USDC_POL";
+
+/** The site hostname sent as `property` on every checkout. */
+export const PROPERTY = "moshcoding.com";
 
 /** What claiming one Moshpit ending costs. See app/api/moshpit/tlds/route.ts. */
 export const CLAIM_PRICE_USD = process.env.MOSHPIT_CLAIM_PRICE_USD || "10.00";
@@ -40,8 +43,24 @@ export function payConfigured(): boolean {
   return Boolean(API_KEY);
 }
 
+/** True for a hosted checkout session id (`cs_...`). */
+export function isCheckoutSessionId(id: unknown): id is string {
+  return typeof id === "string" && /^cs_[A-Za-z0-9]+$/.test(id);
+}
+
+/**
+ * Where to send the buyer for a stored id: the hosted checkout for a session,
+ * the single-coin pay page for a payment made before sessions.
+ */
 export function payUrl(id: string): string {
-  return `${ISSUER}/pay/${encodeURIComponent(id)}`;
+  const path = isCheckoutSessionId(id) ? "checkout" : "pay";
+  return `${ISSUER}/${path}/${encodeURIComponent(id)}`;
+}
+
+/** Session lifetime CoinPay accepts: 15 to 120 minutes. */
+export function sessionMinutes(holdMinutes: number): number {
+  const n = Math.round(Number(holdMinutes) || 0);
+  return Math.min(120, Math.max(15, n));
 }
 
 export type CreatedPayment = { id: string; status: string; payUrl: string };
@@ -81,58 +100,62 @@ export function formatUsd(amount: number): string {
 }
 
 /**
- * Charge for claiming a Moshpit ending.
+ * Charge for claiming a Moshpit ending with a hosted checkout session.
  *
- * The redirect goes back to /pit carrying the payment id, because the hosted
- * page returns the customer before the webhook necessarily lands — the page
- * polls that id rather than assuming the claim already went through.
+ * The buyer comes back to /pit carrying the claim id (and the session id),
+ * because the hosted page returns them before the webhook necessarily lands;
+ * the page polls the claim rather than assuming it already went through.
  *
- * `expiresIn` is tied to the same hold the registry places on the name, so the
- * payment cannot still be payable after the reservation it depends on is gone.
+ * The session lifetime follows the hold the registry places on the name
+ * (clamped to CoinPay's 15 to 120 minutes), so the checkout does not stay
+ * payable long after the reservation it depends on is gone.
  */
 export async function createClaimPayment(opts: {
   claimId: string;
   accountId: string;
-  email: string | null;
+  email: string;
   tld: string;
-  redirectUrl?: string;
+  successUrl?: string;
+  cancelUrl?: string;
   amount?: string;
   holdMinutes?: number;
 }): Promise<CreatedPayment> {
   const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER });
   const holdMinutes = opts.holdMinutes ?? CLAIM_HOLD_MINUTES;
-  const { paymentId, checkoutUrl, payment } = await coinpay.createCheckout({
+  const { sessionId, checkoutUrl, session } = await coinpay.createCheckout({
     amountUsd: claimPriceUsd(opts.amount || CLAIM_PRICE_USD),
-    currency: PAY_CHAIN.toLowerCase(),
-    paymentMethod: "crypto",
-    description: `moshpit ending — .${opts.tld}`,
-    expiresIn: holdMinutes * 60,
+    customerEmail: opts.email,
+    accountId: opts.accountId,
+    property: PROPERTY,
+    description: `Moshpit ending .${opts.tld}`,
+    expiresInMinutes: sessionMinutes(holdMinutes),
     metadata: {
       kind: "tld_claim",
       claim_id: opts.claimId,
       tld: opts.tld,
-      account_id: opts.accountId,
-      ...(opts.email ? { email: opts.email } : {}),
     },
-    ...(opts.redirectUrl ? { redirectUrl: opts.redirectUrl } : {}),
+    ...(opts.successUrl ? { successUrl: opts.successUrl } : {}),
+    ...(opts.cancelUrl ? { cancelUrl: opts.cancelUrl } : {}),
     ...(BUSINESS_ID ? { businessId: BUSINESS_ID } : {}),
   });
-  // checkoutUrl is what the client returns; payUrl() is the same hosted page
-  // derived from the id, kept as a fallback for an older API response.
-  return { id: paymentId, status: payment.status || "pending", payUrl: checkoutUrl || payUrl(paymentId) };
+  return { id: sessionId, status: String(session.status || "open"), payUrl: checkoutUrl || payUrl(sessionId) };
 }
 
-const PAID = new Set(["confirmed", "forwarded", "completed"]);
-/** CoinPay statuses that mean the money is in: confirmed/forwarded/completed. */
+const PAID = new Set(["confirmed", "forwarded", "completed", "paid"]);
+/** CoinPay statuses that mean the money is in: confirmed/forwarded/completed, or a paid session. */
 export function isPaidStatus(s: unknown): boolean {
   return typeof s === "string" && PAID.has(s.toLowerCase());
 }
 
-/** GET <ISSUER>/api/payments/<id> — poll fallback when a webhook is missed. */
+/**
+ * Poll fallback when a webhook is missed: GET /api/checkout/sessions/<id> for a
+ * session (status open, paid or expired), GET /api/payments/<id> for an older
+ * single-coin payment.
+ */
 export async function fetchPaymentStatus(id: string): Promise<string | null> {
   try {
     const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER });
-    const { status } = await coinpay.getCheckout(id);
+    const { status } = isCheckoutSessionId(id) ? await coinpay.getCheckout(id) : await coinpay.getPayment(id);
     return status || null;
   } catch {
     return null;
