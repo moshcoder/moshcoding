@@ -71,7 +71,7 @@ export const DEFAULT_ACCENT = "#9EF01A";
  * or disabled with ?ad_block=none.
  */
 export const DEFAULT_AD_SLOT = "fd4ff2e8-db11-438f-8151-3054aa5e1e4c";
-export const DEFAULT_AD_FORMAT = "banner_300x250";
+export const DEFAULT_AD_FORMAT = "text_link";
 const AD_UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /**
