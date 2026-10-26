@@ -451,7 +451,7 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
         socket.on("close", () => connections.delete(socket));
 
         let buffered = Buffer.alloc(0);
-        socket.on("data", (chunk) => {
+        socket.on("data", (chunk: Buffer) => {
           buffered = Buffer.concat([buffered, chunk]);
           // A connection may carry several queries back to back, each framed
           // by a two-byte length (RFC 7766).

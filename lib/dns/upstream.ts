@@ -115,7 +115,7 @@ function askTcp(upstream: Upstream, payload: Buffer, timeoutMs: number): Promise
       payload.copy(framed, 2);
       socket.write(framed);
     });
-    socket.on("data", (chunk) => {
+    socket.on("data", (chunk: Buffer) => {
       buffered = Buffer.concat([buffered, chunk]);
       if (buffered.length < 2) return;
       const length = buffered.readUInt16BE(0);
