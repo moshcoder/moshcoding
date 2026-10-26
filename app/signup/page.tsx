@@ -1,5 +1,10 @@
 "use client";
 import { useState } from "react";
+import { ProfileFields } from "@profullstack/profile/react";
+
+// The shared Profullstack profile, minus email (this form has its own box).
+const PROFILE_FIELDS = ["first_name", "last_name", "company_domain", "job_title", "linkedin_url"] as const;
+type ProfileValues = Partial<Record<(typeof PROFILE_FIELDS)[number], string | null>>;
 
 const SOCIALS = [
   { key: "x", label: "X / Twitter", ph: "@handle" },
@@ -16,6 +21,8 @@ export default function SignupPage() {
   const [domain, setDomain] = useState("");
   const [wallet, setWallet] = useState("");
   const [handles, setHandles] = useState<Record<string, string>>({});
+  const [profile, setProfile] = useState<ProfileValues>({});
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
 
@@ -30,9 +37,10 @@ export default function SignupPage() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password, domain: domain.trim(), handles, payoutWallet: wallet.trim(), ref }),
+        body: JSON.stringify({ ...profile, email: email.trim(), password, domain: domain.trim(), handles, payoutWallet: wallet.trim(), ref }),
       });
       const data = await res.json();
+      setProfileErrors(data.errors || {});
       if (!res.ok) throw new Error(data.error || "Signup failed.");
       setMsg({ t: "You're in — setting up your page. 🤘", ok: true });
       window.location.href = data.redirect || "/dashboard";
@@ -57,6 +65,13 @@ export default function SignupPage() {
         <div className="row"><input className="inp" type="email" placeholder="you@email.com" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <div className="row"><input className="inp" type="password" placeholder="Password (min 8 chars)" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
         <div className="row"><input className="inp" placeholder="your-domain.com" required value={domain} onChange={(e) => setDomain(e.target.value)} /></div>
+        <ProfileFields
+          fields={[...PROFILE_FIELDS]}
+          idPrefix="signup-"
+          values={profile}
+          onChange={setProfile}
+          errors={profileErrors}
+        />
 
         <h2 style={{ marginTop: 18 }}>Socials <span className="muted">(optional)</span></h2>
         {SOCIALS.map((s) => (

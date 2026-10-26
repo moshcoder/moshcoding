@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { saveSignupProfile, validateProfile } from "@profullstack/profile";
+import { profiles } from "@/lib/profile";
 import { hashPassword, passwordProblem } from "@/lib/password";
 import { createAccount, getAccountByEmail, activateAccount } from "@/lib/db";
 import { safeDomain, normalizeHandle } from "@/lib/config";
@@ -50,6 +52,13 @@ export async function POST(req: NextRequest) {
   const rawRef = (typeof body?.ref === "string" && body.ref) || req.cookies.get("mc_ref")?.value || "";
   const ref = String(rawRef).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || null;
 
+  // The shared profile fields: names required; company, title, LinkedIn optional.
+  const check = validateProfile({ ...body, email });
+  if (!check.ok) {
+    const errors = check.errors as Record<string, string>;
+    return NextResponse.json({ error: Object.values(errors)[0] ?? "Some fields need fixing.", errors }, { status: 400 });
+  }
+
   if (await getAccountByEmail(email)) {
     return NextResponse.json({ error: "An account with that email already exists. Try logging in." }, { status: 409 });
   }
@@ -69,6 +78,11 @@ export async function POST(req: NextRequest) {
     console.error("signup: createAccount failed:", err?.message);
     return NextResponse.json({ error: "Couldn't create the account. Try again." }, { status: 500 });
   }
+
+  // A failed profile save never costs the signup; the API lets them fill it later.
+  await saveSignupProfile(profiles(), `acct:${account.id}`, check.profile, { email }).catch((err: any) =>
+    console.error("signup: profile save failed:", err?.message),
+  );
 
   // Log the new account in immediately (as a pending account) so the dashboard
   // can show payment status.

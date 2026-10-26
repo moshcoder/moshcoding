@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import type { WaitlistSort } from "./waitlist-filter";
 import { sqlTime } from "./sql-time";
+import { schemaSql } from "@profullstack/profile";
 
 let _db: Client | undefined;
 const POSTGRES_URL = /^postgres(ql)?:\/\//i;
@@ -490,6 +491,20 @@ async function initSchema(): Promise<void> {
     )
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_media_dn ON media (dn, created_at)`);
+  await ensureProfileTable();
+}
+
+/**
+ * The shared profile table (@profullstack/profile), from the package's own DDL.
+ * Created here rather than with the package's migrate(), whose Postgres
+ * advisory lock needs one connection and libsql-pg hands out a pool. No backfill
+ * from users.name: it is almost all test probes, not people.
+ */
+async function ensureProfileTable(): Promise<void> {
+  const dialect = POSTGRES_URL.test(databaseUrl()) ? "postgres" : "sqlite";
+  for (const stmt of schemaSql({ dialect, key: "user_id", keyType: "text" }).split(";\n")) {
+    if (stmt.trim()) await db().execute(stmt);
+  }
 }
 
 /**
