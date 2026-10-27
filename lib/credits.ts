@@ -57,11 +57,10 @@ function rawConnection(): { kind: "pg"; pool: any } | { kind: "sqlite"; db: any 
   if (POSTGRES_URL.test(url)) {
     if (!_pool) {
       const { Pool } = require_("pg");
-      const parsed = new URL(url);
-      const mode = parsed.searchParams.get("sslmode");
-      parsed.searchParams.delete("sslmode");
-      const ssl = mode === "require" || mode === "prefer" ? { rejectUnauthorized: false } : mode ? true : undefined;
-      _pool = new Pool({ connectionString: parsed.toString(), ssl, max: 4 });
+      // The same sslmode handling as the app's own client (libsql-pg), so both
+      // connections reach the database the same way.
+      const { connectionSettings } = require_("@profullstack/libsql-pg");
+      _pool = new Pool({ ...connectionSettings(url), max: 4 });
       _pool.on("error", () => {});
     }
     return { kind: "pg", pool: _pool };
