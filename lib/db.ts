@@ -230,6 +230,48 @@ async function initSchema(): Promise<void> {
   // config added via ALTER for accounts tables created before it existed.
   await addColumnIfMissing("accounts", "config", "TEXT NOT NULL DEFAULT '{}'");
   await addColumnIfMissing("accounts", "is_admin", "INTEGER NOT NULL DEFAULT 0");
+  // The CoinPay identity (OIDC `sub`) an account is bound to. CoinPay does not
+  // verify email addresses (its userinfo always says email_verified=false), so
+  // a CoinPay sign-in must never be matched to an account by email alone once
+  // the account has another owner. See accountIdForCoinpay().
+  if (await addColumnIfMissing("accounts", "coinpay_sub", "TEXT")) {
+    // One time, on the deploy that adds the column: keep the links that already
+    // exist (each CoinPay user who has signed in so far, to the account with
+    // their email). Never re-run: a later CoinPay sign-up with somebody else's
+    // address would be bound by it.
+    await d.execute(`UPDATE accounts SET coinpay_sub = (
+        SELECT u.sub FROM users u WHERE lower(u.email) = accounts.email LIMIT 1)
+      WHERE coinpay_sub IS NULL`);
+  }
+  await d.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_coinpay_sub ON accounts (coinpay_sub)`);
+
+  // ---- paid-plan grants: credit codes + invite bonuses ---------------------
+  // One row per (account, source), so every grant is idempotent: `code:<id>`,
+  // `invite:<inviteId>:inviter|invitee`. The paid affiliate plan ($1/mo) runs
+  // until the end of the queued days (see paidUntilFromGrants in lib/plan.ts).
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS plan_grants (
+      account_id TEXT NOT NULL,
+      source     TEXT NOT NULL,
+      days       INTEGER NOT NULL,
+      granted_at TEXT NOT NULL,
+      PRIMARY KEY (account_id, source)
+    )
+  `);
+  // One row per accepted invite (the invitee). The bonus waits as 'pending'
+  // until the invitee confirms their email, then is paid once.
+  await d.execute(`
+    CREATE TABLE IF NOT EXISTS invite_bonuses (
+      invitee_id TEXT PRIMARY KEY,
+      inviter_id TEXT NOT NULL,
+      invite_id  TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','denied')),
+      reason     TEXT,
+      created_at TEXT NOT NULL,
+      settled_at TEXT
+    )
+  `);
+  await d.execute(`CREATE INDEX IF NOT EXISTS idx_invite_bonuses_inviter ON invite_bonuses (inviter_id, status)`);
 
   // Read-model for tenant `?dn=` pages so a provisioned page renders from the DB
   // (on-disk configs/*.json don't persist on Railway). `config` is the same
@@ -512,11 +554,14 @@ async function ensureProfileTable(): Promise<void> {
  * "duplicate column name"; on Postgres the client rewrites the statement to
  * ADD COLUMN IF NOT EXISTS, and the message form is covered anyway).
  */
-async function addColumnIfMissing(table: string, column: string, type: string): Promise<void> {
+/** Adds a column unless it exists. True only on the run that added it. */
+async function addColumnIfMissing(table: string, column: string, type: string): Promise<boolean> {
   try {
     await db().execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    return true;
   } catch (err: any) {
     if (!/duplicate column name|already exists/i.test(String(err?.message))) throw err;
+    return false;
   }
 }
 
@@ -619,15 +664,12 @@ export type Account = {
   coinpay_payment_id: string | null;
   paid_at: string | null;
   is_admin: boolean;
+  /** The CoinPay `sub` this account is bound to, if any. */
+  coinpay_sub: string | null;
+  created_at: string | null;
   /** Full editable tenant config (socials, customLinks, sponsors, hashtags, stream, accents, text). */
   config: Record<string, any>;
 };
-
-/** ADMIN_EMAILS (comma/space separated) skip the $1 fee and are auto-active. */
-export function isAdminEmail(email: string): boolean {
-  const list = (process.env.ADMIN_EMAILS || "").toLowerCase().split(/[,\s]+/).filter(Boolean);
-  return list.includes(email.trim().toLowerCase());
-}
 
 function rowToAccount(r: any): Account {
   let handles: Record<string, string> = {};
@@ -646,6 +688,8 @@ function rowToAccount(r: any): Account {
     coinpay_payment_id: r.coinpay_payment_id ? String(r.coinpay_payment_id) : null,
     paid_at: r.paid_at ? String(r.paid_at) : null,
     is_admin: Boolean(Number(r.is_admin || 0)),
+    coinpay_sub: r.coinpay_sub ? String(r.coinpay_sub) : null,
+    created_at: r.created_at ? String(r.created_at) : null,
     config,
   };
 }
@@ -663,6 +707,8 @@ export async function createAccount(opts: {
 }): Promise<Account> {
   await ensureSchema();
   const email = opts.email.trim().toLowerCase();
+  // A domain someone else holds is never handed over by a sign-up.
+  if (opts.domain && (await domainClaimedByOther(null, opts.domain))) throw new DomainTakenError(opts.domain);
   const seedConfig = Object.keys(opts.handles || {}).length ? { socials: opts.handles } : {};
   const res = await db().execute({
     sql: `INSERT INTO accounts (email, password_hash, password_salt, domain, handles, payout_wallet, payout_chain, ref, config)
@@ -694,44 +740,61 @@ export async function getAccountByEmail(
 }
 
 /**
- * Resolves the tenant account for a signed-in user, creating a passwordless one
- * on first access. Lets CoinPay-OAuth users (who have no native password) use the
- * dashboard editor and affiliate program without a separate signup.
+ * Finds the account for an email, creating a passwordless one on first use
+ * (the public affiliate join form). Never grants admin: no email here is
+ * verified (native sign-up sends no confirmation and CoinPay's userinfo says
+ * email_verified=false), so ADMIN_EMAILS cannot be trusted to promote anyone.
+ * Admin is set by hand in the database.
  */
 export async function findOrCreateAccountByEmail(email: string): Promise<Account> {
   await ensureSchema();
   const e = email.trim().toLowerCase();
-  const admin = isAdminEmail(e);
-  let acct: Account;
   const existing = await getAccountByEmail(e);
-  if (existing) {
-    acct = existing;
-  } else {
-    const res = await db().execute({
-      // "oauth" sentinel hash never matches scrypt-hex, so password login stays disabled.
-      sql: `INSERT INTO accounts (email, password_hash, password_salt, config, is_admin, status, plan)
-            VALUES (?, 'oauth', ?, '{}', ?, ?, ?)
-            ON CONFLICT (email) DO UPDATE SET email = excluded.email
-            RETURNING *`,
-      args: [e, randomBytes(16).toString("hex"), admin ? 1 : 0, admin ? "active" : "pending", admin ? "pro" : "free"],
-    });
-    acct = rowToAccount(res.rows[0]);
-  }
-  // Keep admins active + flagged (no $1) even if the row predates admin status.
-  if (admin && (!acct.is_admin || acct.status !== "active")) {
-    const res = await db().execute({
-      sql: `UPDATE accounts SET is_admin = 1, status = 'active', plan = 'pro',
-                 paid_at = COALESCE(paid_at, ?) WHERE id = ? RETURNING *`,
-      args: [sqlTime(), acct.id],
-    });
-    acct = rowToAccount(res.rows[0]);
-  }
-  return acct;
+  if (existing) return existing;
+  const res = await db().execute({
+    // "oauth" sentinel hash never matches scrypt-hex, so password login stays disabled.
+    sql: `INSERT INTO accounts (email, password_hash, password_salt, config, is_admin, status, plan)
+          VALUES (?, 'oauth', ?, '{}', 0, 'pending', 'free')
+          ON CONFLICT (email) DO UPDATE SET email = excluded.email
+          RETURNING *`,
+    args: [e, randomBytes(16).toString("hex")],
+  });
+  return rowToAccount(res.rows[0]);
 }
 
-/** Sets the tenant domain (used when a CoinPay user claims a page from the dashboard). */
+/**
+ * The account a CoinPay sign-in acts as. Bound by CoinPay `sub`, not by email:
+ * CoinPay does not verify addresses, so matching on email alone would let
+ * anyone who registers a CoinPay account with your address open your account.
+ *
+ * - bound to this sub: that account.
+ * - an account with this email that has no password and no CoinPay binding
+ *   (made by a previous CoinPay sign-in or the email-only affiliate form):
+ *   bind it to this sub and use it.
+ * - no account with this email: create one, bound.
+ * - otherwise (a password account, or bound to another CoinPay identity):
+ *   null. Sign in with the password instead.
+ */
+export async function accountIdForCoinpay(sub: string, email: string | null | undefined): Promise<string | null> {
+  await ensureSchema();
+  if (!sub || sub.startsWith("acct:")) return null;
+  const bound = await db().execute({ sql: `SELECT id FROM accounts WHERE coinpay_sub = ?`, args: [sub] });
+  if (bound.rows[0]) return String(bound.rows[0].id);
+  if (!email) return null;
+  const acct = await findOrCreateAccountByEmail(email);
+  const claim = await db().execute({
+    sql: `UPDATE accounts SET coinpay_sub = ?
+           WHERE id = ? AND coinpay_sub IS NULL AND password_hash = 'oauth'
+           RETURNING id`,
+    args: [sub, acct.id],
+  });
+  return claim.rows[0] ? String(claim.rows[0].id) : null;
+}
+
+/** Sets the tenant domain (used when a CoinPay user claims a page from the dashboard). Throws DomainTakenError for a domain another account holds. */
 export async function setAccountDomain(id: string, domain: string): Promise<Account | null> {
   await ensureSchema();
+  if (await domainClaimedByOther(id, domain)) throw new DomainTakenError(domain);
   const res = await db().execute({
     sql: `UPDATE accounts SET domain = ? WHERE id = ? RETURNING *`,
     args: [domain, id],
@@ -744,14 +807,45 @@ export async function setAccountDomain(id: string, domain: string): Promise<Acco
 
 export type ParkedDomain = { domain: string; count: number; verified: number; created_at: string };
 
-/** Registers a domain to an account (idempotent; reassigns if re-claimed). */
-export async function addParkedDomain(accountId: string, domain: string): Promise<void> {
+export class DomainTakenError extends Error {
+  constructor(domain: string) {
+    super(`${domain} is already claimed by another account.`);
+    this.name = "DomainTakenError";
+  }
+}
+
+/**
+ * Is this domain held by an account other than `accountId` (null = anyone)?
+ * A parked domain, a tenant page (including one with no owner, which only
+ * staff manage) or another account's page domain all count. Claiming used to
+ * reassign the domain, which let any signed-in user (or an anonymous sign-up)
+ * take over somebody else's page, e.g. moshscript.com.
+ */
+export async function domainClaimedByOther(accountId: string | null, domain: string): Promise<boolean> {
   await ensureSchema();
+  const dn = domain.trim().toLowerCase();
+  const me = accountId ?? "";
+  const r = await db().execute({
+    sql: `SELECT 1 FROM parked_domains WHERE domain = ? AND account_id <> ?
+          UNION SELECT 1 FROM tenants WHERE domain = ? AND (account_id IS NULL OR account_id <> ?)
+          UNION SELECT 1 FROM accounts WHERE lower(domain) = ? AND id <> ?
+          LIMIT 1`,
+    args: [dn, me, dn, me, dn, me],
+  });
+  return r.rows.length > 0;
+}
+
+/** Registers a domain to an account (idempotent). False if another account holds it. */
+export async function addParkedDomain(accountId: string, domain: string): Promise<boolean> {
+  await ensureSchema();
+  const dn = domain.trim().toLowerCase();
+  if (await domainClaimedByOther(accountId, dn)) return false;
   await db().execute({
     sql: `INSERT INTO parked_domains (account_id, domain) VALUES (?, ?)
-          ON CONFLICT (domain) DO UPDATE SET account_id = excluded.account_id`,
-    args: [accountId, domain.trim().toLowerCase()],
+          ON CONFLICT (domain) DO NOTHING`,
+    args: [accountId, dn],
   });
+  return ownsParkedDomain(accountId, dn);
 }
 
 /** Lists an account's parked domains with their waitlist counts. */
@@ -1260,15 +1354,23 @@ export async function updatePassword(id: string, hash: string, salt: string): Pr
 // ---- tenant read-model ----------------------------------------------------
 
 /** Upserts the tenant config rendered at ?dn=<domain>. `config` is override JSON. */
-export async function upsertTenant(domain: string, accountId: string | null, config: Record<string, unknown>): Promise<void> {
+/**
+ * Upserts the tenant config rendered at ?dn=<domain>. Only the account that
+ * owns the row can overwrite it; a row with no owner (staff-managed) or another
+ * owner is left alone and this returns false.
+ */
+export async function upsertTenant(domain: string, accountId: string | null, config: Record<string, unknown>): Promise<boolean> {
   await ensureSchema();
-  await db().execute({
+  const res = await db().execute({
     sql: `INSERT INTO tenants (domain, account_id, config, updated_at)
           VALUES (?, ?, ?, datetime('now'))
           ON CONFLICT (domain) DO UPDATE SET
-            account_id = excluded.account_id, config = excluded.config, updated_at = datetime('now')`,
+            config = excluded.config, updated_at = datetime('now')
+          WHERE tenants.account_id = excluded.account_id
+          RETURNING domain`,
     args: [domain.trim().toLowerCase(), accountId, JSON.stringify(config || {})],
   });
+  return res.rows.length > 0;
 }
 
 // ---- affiliates -----------------------------------------------------------
@@ -1320,11 +1422,12 @@ export function normalizeAffiliateCommission(pct: number, plan: "free" | "paid")
   return p;
 }
 
-export async function setAffiliateCommission(accountId: string, pct: number): Promise<Affiliate | null> {
+/** `plan` is the effective plan (stored plan or granted days, see lib/plan.ts). */
+export async function setAffiliateCommission(accountId: string, pct: number, plan?: "free" | "paid"): Promise<Affiliate | null> {
   await ensureSchema();
   const aff = await getAffiliate(accountId);
   if (!aff) return null;
-  const p = normalizeAffiliateCommission(pct, aff.plan);
+  const p = normalizeAffiliateCommission(pct, plan ?? aff.plan);
   const res = await db().execute({
     sql: `UPDATE affiliates SET commission_pct = ? WHERE account_id = ? RETURNING *`,
     args: [p, accountId],

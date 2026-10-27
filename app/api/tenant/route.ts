@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import {
-  findOrCreateAccountByEmail, ownsParkedDomain, addParkedDomain, removeParkedDomain,
+  accountIdForCoinpay, ownsParkedDomain, addParkedDomain, removeParkedDomain,
   listParkedDomains, getTenantConfig, upsertTenant,
 } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
@@ -19,8 +19,7 @@ async function accountId(req: NextRequest): Promise<string | null> {
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!s) return null;
   if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
+  return accountIdForCoinpay(s.sub, s.email);
 }
 
 // GET /api/tenant?dn=<domain> → that domain's config (owner only).
@@ -45,7 +44,9 @@ export async function POST(req: NextRequest) {
   if (body?.addDomain) {
     const dn = safeDomain(body.addDomain);
     if (!dn) return NextResponse.json({ error: "Enter a valid domain name." }, { status: 400 });
-    await addParkedDomain(id, dn);
+    if (!(await addParkedDomain(id, dn))) {
+      return NextResponse.json({ error: `${dn} is already claimed by another account.` }, { status: 409 });
+    }
     return NextResponse.json({ ok: true, dn, domains: await listParkedDomains(id) });
   }
 
@@ -65,7 +66,9 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(prior?.assets)) config.assets = prior.assets;
     }
   }
-  await upsertTenant(dn, id, config);
+  if (!(await upsertTenant(dn, id, config))) {
+    return NextResponse.json({ error: `${dn}'s page belongs to another account.` }, { status: 409 });
+  }
   return NextResponse.json({ dn, config, pageUrl: `/?dn=${encodeURIComponent(dn)}`, ...(warning ? { warning } : {}) });
 }
 

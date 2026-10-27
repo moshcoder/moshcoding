@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { coinpayConfigured, signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 import { exchangeCode, fetchUserinfo } from "@/lib/oauth";
 import { requestHosts, resolveOrigin, redirectUriFor } from "@/lib/oauth-origin";
-import { upsertUser } from "@/lib/db";
+import { upsertUser, accountIdForCoinpay } from "@/lib/db";
+import { acceptInviteAndNotify, INVITE_COOKIE } from "@/lib/credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,11 +41,22 @@ export async function GET(req: NextRequest) {
     if (!info?.sub) return fail("no subject in userinfo");
     await upsertUser({ sub: info.sub, email: info.email, name: info.name });
 
+    // Arrived through an invite link (/i/<code> set the cookie): accept it on
+    // the account this CoinPay identity is bound to. Never blocks the sign-in.
+    const invite = req.cookies.get(INVITE_COOKIE)?.value;
+    let landing = `${origin}/`;
+    if (invite) {
+      const accountId = await accountIdForCoinpay(info.sub, info.email).catch(() => null);
+      const r = accountId ? await acceptInviteAndNotify(invite, accountId, origin).catch(() => null) : null;
+      landing = `${origin}/invites?invite=${encodeURIComponent(r ? (r.ok ? r.status : r.reason) : "no_account")}`;
+    }
+
     // Land back on the host the user started from, where the session cookie applies.
-    const res = NextResponse.redirect(`${origin}/`);
+    const res = NextResponse.redirect(landing);
     res.cookies.set(SESSION_COOKIE, signSession({ sub: info.sub, email: info.email ?? null, name: info.name ?? null }), sessionCookieOptions(req));
     res.cookies.delete("cp_pkce");
     res.cookies.delete("cp_state");
+    if (invite) res.cookies.delete(INVITE_COOKIE);
     return res;
   } catch (err: any) {
     console.error("[auth] callback error:", err?.message);

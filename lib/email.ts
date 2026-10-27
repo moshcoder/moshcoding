@@ -212,3 +212,40 @@ export function sendPasswordReset(opts: {
 </body></html>`;
   return send({ to: opts.email, subject, html, text });
 }
+
+/**
+ * Sends the invitee the link that confirms their address and pays the invite
+ * bonus. `url` is built from the request's (allowlisted) origin by the caller.
+ */
+export function sendInviteConfirm(opts: { email: string; url: string; days: number }): Promise<SendResult> {
+  const subject = "Confirm your email to unlock your moshcoding.com invite";
+  const text =
+    `You joined moshcoding.com with an invite. Confirm this address and you and the person who invited you\n` +
+    `each get ${opts.days} days of the paid affiliate plan:\n${opts.url}\n\n` +
+    `The link works in any browser for 14 days. Didn't sign up? Ignore this email.`;
+  const safeUrl = escapeHtml(opts.url);
+  const html = `<!doctype html>
+<html><body style="margin:0;background:#0b0b0c;color:#e7e7e7;font-family:ui-monospace,Menlo,Consolas,monospace">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:480px;background:#141416;border:1px solid #26262a;border-radius:12px;padding:28px">
+        <tr><td>
+          <h1 style="margin:0 0 8px;font-size:22px;color:#9EF01A">moshcoding.com 🤘</h1>
+          <p style="margin:0 0 20px;line-height:1.5;color:#c9c9c9">
+            You joined with an invite. Confirm this address and you both get ${escapeHtml(opts.days)} days of the paid affiliate plan.
+          </p>
+          <p style="margin:0 0 24px">
+            <a href="${safeUrl}" style="display:inline-block;background:#9EF01A;color:#0b0b0c;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">
+              Confirm my email
+            </a>
+          </p>
+          <p style="margin:0;font-size:12px;color:#8a8a8a;line-height:1.5;word-break:break-all">
+            Or paste this link (works for 14 days):<br>${safeUrl}
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  return send({ to: opts.email, subject, html, text });
+}

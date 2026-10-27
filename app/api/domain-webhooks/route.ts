@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import { safeDomain } from "@/lib/config";
 import {
-  findOrCreateAccountByEmail,
+  accountIdForCoinpay,
   accountOwnsDomain,
   listDomainWebhooks,
   addDomainWebhook,
@@ -22,8 +22,7 @@ async function resolveAccountId(req: NextRequest): Promise<string | null> {
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!s) return null;
   if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
+  return accountIdForCoinpay(s.sub, s.email);
 }
 
 function inboundUrl(req: NextRequest, dn: string): string {
