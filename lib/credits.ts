@@ -15,6 +15,8 @@ import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import { Credits, postgresStore as creditsPg, sqliteStore as creditsSqlite } from "@profullstack/redeem-credits";
 import { Affiliates, postgresStore as affPg, sqliteStore as affSqlite } from "@profullstack/affiliates";
+import { connectionSettings } from "@profullstack/libsql-pg";
+import pg from "pg";
 import { databaseUrl, db, ensureSchema, getAccountById, type Account } from "./db";
 import { grantPaidDays, toMs } from "./plan";
 import { sqlTime } from "./sql-time";
@@ -56,11 +58,11 @@ function rawConnection(): { kind: "pg"; pool: any } | { kind: "sqlite"; db: any 
   const url = databaseUrl();
   if (POSTGRES_URL.test(url)) {
     if (!_pool) {
-      const { Pool } = require_("pg");
       // The same sslmode handling as the app's own client (libsql-pg), so both
-      // connections reach the database the same way.
-      const { connectionSettings } = require_("@profullstack/libsql-pg");
-      _pool = new Pool({ ...connectionSettings(url), max: 4 });
+      // connections reach the database the same way. A static import: libsql-pg
+      // is ESM and a server external, and require() of it from the Next bundle
+      // returned no connectionSettings (prod 500 "i is not a function").
+      _pool = new pg.Pool({ ...connectionSettings(url), max: 4 });
       _pool.on("error", () => {});
     }
     return { kind: "pg", pool: _pool };
