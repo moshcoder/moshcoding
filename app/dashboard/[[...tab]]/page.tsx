@@ -136,6 +136,7 @@ export default function Dashboard() {
         <button className={`tab${tab === "keys" ? " on" : ""}`} onClick={() => setTab("keys")}>API keys</button>
         <button className={`tab${tab === "affiliates" ? " on" : ""}`} onClick={() => setTab("affiliates")}>Affiliates</button>
         <button className={`tab${tab === "dns" ? " on" : ""}`} onClick={() => setTab("dns")}>Custom domain</button>
+        <a className="tab" href="/invites">Invites &amp; codes</a>
         <a className="tab" href={PIT_RECORDS_URL}>Moshpit DNS ↗</a>
       </div>
 
@@ -1268,6 +1269,8 @@ function AffiliatesPanel({ onError, onOk }: { onError: (m: string) => void; onOk
       ) : (
         <p className="sub">Locked at the {data.floor}% floor on the free plan. <b>Upgrade to $1/mo</b> to lower it. <span className="muted">(recurring billing coming soon)</span></p>
       )}
+      {aff.paid_until && <p className="sub">Paid plan from a code or invite runs until <b>{String(aff.paid_until).slice(0, 10)}</b>.</p>}
+      <p className="sub">Have a code? <a href="/invites#redeem">Redeem it</a> for days of the paid plan, or <a href="/invites">invite someone</a>: you both get days when they join.</p>
 
       <h3 className="ed-h">Referred users ({data.referrals?.length || 0})</h3>
       <ul className="list">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { findOrCreateAccountByEmail, ownsParkedDomain, listDomainSignups } from "@/lib/db";
+import { accountIdForCoinpay, ownsParkedDomain, listDomainSignups } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
 import {
   filterSignupsByQuery,
@@ -17,8 +17,7 @@ async function accountId(req: NextRequest): Promise<string | null> {
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!s) return null;
   if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
+  return accountIdForCoinpay(s.sub, s.email);
 }
 
 // GET /api/waitlist/manage?dn=<domain>[&format=csv][&status=verified|pending]

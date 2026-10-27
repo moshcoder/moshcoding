@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAccountById, updateAccountProfile, updateAccountConfig, setAccountDomain, listParkedDomains } from "@/lib/db";
+import { getAccountById, updateAccountProfile, updateAccountConfig, setAccountDomain, listParkedDomains, DomainTakenError } from "@/lib/db";
 import { resolveAccountId } from "@/lib/api";
 import {
   normalizeHandle, normalizeUrl, coerceRgba, parseHashtags, safeDomain, cleanCustomCode, cleanCustomCss,
@@ -158,7 +158,12 @@ export async function POST(req: NextRequest) {
   if (typeof body?.domain === "string" && body.domain.trim()) {
     const dn = safeDomain(body.domain);
     if (!dn) return NextResponse.json({ error: "Enter a valid domain name." }, { status: 400 });
-    await setAccountDomain(id, dn);
+    try {
+      await setAccountDomain(id, dn);
+    } catch (err) {
+      if (err instanceof DomainTakenError) return NextResponse.json({ error: err.message }, { status: 409 });
+      throw err;
+    }
   }
 
   // Payout wallet is edited on its own; only touch it when provided.

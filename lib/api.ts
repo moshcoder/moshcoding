@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionUser, getOrCreateUser } from "./authz";
 import { readSession, authConfigured, SESSION_COOKIE } from "./session";
-import { findOrCreateAccountByEmail } from "./db";
+import { accountIdForCoinpay } from "./db";
 import { accountIdForToken, bearerToken } from "./apikeys";
 
 /** Resolve the authenticated user (provisioning a default org/team on first hit). */
@@ -22,8 +22,7 @@ export async function resolveAccountId(req: NextRequest): Promise<string | null>
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!s) return null;
   if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
+  return accountIdForCoinpay(s.sub, s.email);
 }
 
 /**

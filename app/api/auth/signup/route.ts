@@ -6,6 +6,8 @@ import { createAccount, getAccountByEmail, activateAccount } from "@/lib/db";
 import { safeDomain, normalizeHandle } from "@/lib/config";
 import { authConfigured, signSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 import { provisionTenant } from "@/lib/provision";
+import { acceptInviteAndNotify, INVITE_COOKIE } from "@/lib/credits";
+import { requestOrigin } from "@/lib/request-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +73,9 @@ export async function POST(req: NextRequest) {
       domain, handles, payoutWallet, payoutChain, ref,
     });
   } catch (err: any) {
+    if (err?.name === "DomainTakenError") {
+      return NextResponse.json({ error: "That domain is already claimed. Pick another one." }, { status: 409 });
+    }
     // Unique-email race.
     if (/unique/i.test(String(err?.message))) {
       return NextResponse.json({ error: "An account with that email already exists." }, { status: 409 });
@@ -94,5 +99,19 @@ export async function POST(req: NextRequest) {
   // Getting started is FREE — activate + provision immediately, no charge.
   const active = await activateAccount({ accountId: account.id });
   if (active) await provisionTenant(active);
-  return setCookie(NextResponse.json({ ok: true, pending: false, activated: true, redirect: "/dashboard" }));
+
+  // An invite from the request body or the /i/<code> cookie. The bonus waits
+  // for the emailed confirmation; a refused invite never fails the sign-up.
+  const invite = (typeof body?.invite === "string" && body.invite.trim().slice(0, 64)) || req.cookies.get(INVITE_COOKIE)?.value || "";
+  let redirect = "/dashboard";
+  if (invite) {
+    const r = await acceptInviteAndNotify(invite, account.id, requestOrigin(req)).catch((err: any) => {
+      console.error("signup: invite failed:", err?.message);
+      return null;
+    });
+    redirect = `/invites?invite=${encodeURIComponent(r ? (r.ok ? r.status : r.reason) : "error")}`;
+  }
+  const res = setCookie(NextResponse.json({ ok: true, pending: false, activated: true, redirect }));
+  if (invite) res.cookies.delete(INVITE_COOKIE);
+  return res;
 }

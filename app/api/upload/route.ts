@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
-import { findOrCreateAccountByEmail, ownsParkedDomain, getTenantConfig, upsertTenant } from "@/lib/db";
+import { accountIdForCoinpay, ownsParkedDomain, getTenantConfig, upsertTenant } from "@/lib/db";
 import { safeDomain } from "@/lib/config";
 import { ffmpegPoster, mediaTypeForUpload } from "@/lib/media";
 
@@ -17,8 +17,7 @@ async function accountId(req: NextRequest): Promise<string | null> {
   const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!s) return null;
   if (s.sub?.startsWith("acct:")) return s.sub.slice("acct:".length);
-  if (s.email) return (await findOrCreateAccountByEmail(s.email)).id;
-  return null;
+  return accountIdForCoinpay(s.sub, s.email);
 }
 
 const domSlug = (dn: string) => dn.trim().toLowerCase().replace(/[^a-z0-9.-]/g, "");

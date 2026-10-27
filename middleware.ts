@@ -44,6 +44,22 @@ export function middleware(req: NextRequest) {
   const res = NextResponse.next();
   res.headers.set("Content-Security-Policy", `frame-ancestors ${frameAncestors(req)}`);
 
+  // /i/<code>: remember the invite for 30 days, so the sign-up or CoinPay
+  // sign-in that follows in this browser accepts it (lib/credits.ts).
+  const invite = req.nextUrl.pathname.match(/^\/i\/([A-Za-z0-9-]{6,40})\/?$/)?.[1];
+  if (invite && invite.toLowerCase() !== "confirm") {
+    res.cookies.set("mc_invite", invite.toUpperCase(), {
+      maxAge: 60 * 60 * 24 * 30,
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      secure:
+        (process.env.APP_BASE_URL || "").startsWith("https://") ||
+        process.env.NODE_ENV === "production" ||
+        req.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https",
+    });
+  }
+
   // Referral attribution: a ?ref=<code> visit drops a 90-day cookie (first-touch
   // — the first ref a visitor arrives with sticks). Signup/waitlist read it so
   // the referral is credited whenever they convert within the window.
