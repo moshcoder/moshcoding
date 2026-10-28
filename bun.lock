@@ -11,7 +11,7 @@
         "@profullstack/profile": "0.1.6",
         "@profullstack/redeem-credits": "0.2.0",
         "@profullstack/stack": "0.5.0",
-        "@profullstack/webhooks": "0.2.0",
+        "@profullstack/webhooks": "0.2.1",
         "mailchecker": "^6.0.21",
         "next": "16.4.3",
         "pg": "^8.23.1",
@@ -151,7 +151,7 @@
 
     "@profullstack/stack": ["@profullstack/stack@0.5.0", "", { "dependencies": { "@profullstack/emailer": "^1.0.1", "@profullstack/form-guard": "^0.1.1", "@profullstack/referrals": "^0.1.0" }, "peerDependencies": { "@supabase/ssr": ">=0.5.0", "next": ">=13.0.0", "react": ">=18.0.0" }, "optionalPeers": ["@supabase/ssr", "next", "react"] }, "sha512-LbXovIhyzLEq+a+y3q8KWC+jN1tJjvSoUiFEhpiEBisQn5U+iutIGHDgg16Lul74kQaFZeFlbp7CMPAVJ8KL6g=="],
 
-    "@profullstack/webhooks": ["@profullstack/webhooks@0.2.0", "", {}, "sha512-lfUoJwN5GmxHzCOphI7fNQAsZ9uiC2C6BZxoPA7MSxM2ryr7MKwOi2YYszwvN6aPaPTRHLhHdqoHQJbkaP9mUg=="],
+    "@profullstack/webhooks": ["@profullstack/webhooks@0.2.1", "", {}, "sha512-QHeSkpu4O44oJ620qhQqxqFlD3u/OhupmXRnBHw4MGKuDTa0R+Y/727nnF7psSHxxSfnbWfNuVl15z3IXuaZiw=="],
 
     "@swc/helpers": ["@swc/helpers@0.5.23", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw=="],
 
