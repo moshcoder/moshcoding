@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, unauthorized, bad } from "@/lib/api";
 import { authorizeProject } from "@/lib/authz";
-import { deleteProjectWebhook, setProjectWebhookActive } from "@/lib/db";
+import { deleteProjectWebhook, setProjectWebhookActive } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

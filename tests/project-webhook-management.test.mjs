@@ -1,134 +1,94 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-process.env.TURSO_DATABASE_URL = "file::memory:";
+// TEST_PG_URL=postgres://... runs the same suite on Postgres (through libsql-pg).
+if (process.env.TEST_PG_URL) process.env.DATABASE_URL = process.env.TEST_PG_URL;
+else {
+  process.env.TURSO_DATABASE_URL = "file::memory:";
+  delete process.env.DATABASE_URL;
+}
 
-const {
-  db,
-  deleteProjectWebhook,
-  ensureSchema,
-  setProjectWebhookActive,
-} = await import("../lib/db.ts");
-const { dispatchEvent } = await import("../lib/webhooks.ts");
+const { db, ensureSchema } = await import("../lib/db.ts");
+const wh = await import("../lib/webhooks.ts");
 
 await ensureSchema();
 
-async function insertEndpoint(projectId, suffix) {
-  const id = `endpoint-${suffix}`;
-  await db().execute({
-    sql: `INSERT INTO webhook_endpoints (id, project_id, url, secret, events)
-          VALUES (?, ?, ?, ?, '["*"]')`,
-    args: [id, projectId, `https://hooks.example.test/${suffix}`, `whsec_${suffix}`],
-  });
-  return id;
+// A hub whose fetch is a recorder and whose DNS check accepts the test hosts.
+const calls = [];
+wh.setHooksForTests(
+  wh.createHooks({
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(null, { status: 204 });
+    },
+    guard: { lookup: async () => ["93.184.216.34"] },
+  }),
+);
+
+async function create(projectId, suffix, events = ["*"]) {
+  const { endpoint, secret } = await wh.createProjectWebhook(projectId, `https://hooks.example.test/${suffix}`, events);
+  return { id: endpoint.id, endpoint, secret };
 }
 
 test("project webhook targets pause and resume without losing configuration", async () => {
-  const id = await insertEndpoint("project-pause", "pause");
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (...args) => {
-    calls.push(args);
-    return new Response(null, { status: 204 });
-  };
+  const { id, secret } = await create("project-pause", "pause");
+  calls.length = 0;
 
-  try {
-    assert.equal(await setProjectWebhookActive(id, "project-pause", false), true);
-    await dispatchEvent("project-pause", "build.finished", { ok: true });
-    assert.equal(calls.length, 0);
+  assert.equal(await wh.setProjectWebhookActive(id, "project-pause", false), true);
+  assert.equal((await wh.dispatchEvent("project-pause", "build.finished", { ok: true })).queued, 0);
 
-    const paused = await db().execute({
-      sql: `SELECT url, secret, events, active FROM webhook_endpoints WHERE id = ?`,
-      args: [id],
-    });
-    assert.deepEqual(
-      {
-        url: String(paused.rows[0].url),
-        secret: String(paused.rows[0].secret),
-        events: String(paused.rows[0].events),
-        active: Number(paused.rows[0].active),
-      },
-      {
-        url: "https://hooks.example.test/pause",
-        secret: "whsec_pause",
-        events: '["*"]',
-        active: 0,
-      },
-    );
+  const [paused] = await wh.listProjectWebhooks("project-pause");
+  assert.deepEqual(
+    { url: paused.url, events: paused.events, active: paused.active },
+    { url: "https://hooks.example.test/pause", events: '["*"]', active: 0 },
+  );
+  assert.equal((await wh.hooks().secret("project:project-pause", id)).secret, secret);
 
-    assert.equal(await setProjectWebhookActive(id, "project-pause", true), true);
-    await dispatchEvent("project-pause", "build.finished", { ok: true });
-    assert.equal(calls.length, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(await wh.setProjectWebhookActive(id, "project-pause", true), true);
+  assert.equal((await wh.dispatchEvent("project-pause", "build.finished", { ok: true })).queued, 1);
+  await wh.hooks().drain();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://hooks.example.test/pause");
 });
 
 test("test deliveries reach active endpoints regardless of event subscriptions", async () => {
-  const id = "endpoint-subscription-test";
-  await db().execute({
-    sql: `INSERT INTO webhook_endpoints (id, project_id, url, secret, events)
-          VALUES (?, ?, ?, ?, ?)`,
-    args: [id, "project-subscription-test", "https://hooks.example.test/subscription-test", "whsec_subscription_test", '["build.finished"]'],
-  });
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (...args) => {
-    calls.push(args);
-    return new Response(null, { status: 204 });
-  };
+  await create("project-subscription-test", "subscription-test", ["build.finished"]);
+  calls.length = 0;
 
-  try {
-    const filtered = await dispatchEvent("project-subscription-test", "ping", { ok: true });
-    assert.equal(filtered.length, 0);
-    assert.equal(calls.length, 0);
+  assert.equal((await wh.dispatchEvent("project-subscription-test", "ping", { ok: true })).queued, 0);
+  await wh.hooks().drain();
+  assert.equal(calls.length, 0);
 
-    const testDeliveries = await dispatchEvent(
-      "project-subscription-test",
-      "ping",
-      { ok: true },
-      { bypassEventFilter: true },
-    );
-    assert.equal(testDeliveries.length, 1);
-    assert.equal(calls.length, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const results = await wh.testProjectWebhooks("project-subscription-test");
+  assert.equal(results.length, 1);
+  assert.equal(results[0].ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test("app-grammar subscriptions are kept on create", async () => {
+  const { endpoint } = await create("project-grammar", "grammar", ["deploy:done", "build.finished"]);
+  assert.equal(endpoint.events, '["deploy:done","build.finished"]');
+  const [listed] = await wh.listProjectWebhooks("project-grammar");
+  assert.equal(listed.events, '["deploy:done","build.finished"]');
 });
 
 test("project scoping prevents cross-project changes", async () => {
-  const id = await insertEndpoint("project-owner", "scoped");
+  const { id } = await create("project-owner", "scoped");
 
-  assert.equal(await setProjectWebhookActive(id, "project-other", false), false);
-  assert.equal(await deleteProjectWebhook(id, "project-other"), false);
-
-  const endpoint = await db().execute({
-    sql: `SELECT active FROM webhook_endpoints WHERE id = ?`,
-    args: [id],
-  });
-  assert.equal(Number(endpoint.rows[0].active), 1);
+  assert.equal(await wh.setProjectWebhookActive(id, "project-other", false), false);
+  assert.equal(await wh.deleteProjectWebhook(id, "project-other"), false);
+  assert.equal((await wh.listProjectWebhooks("project-owner"))[0].active, 1);
 });
 
 test("deleting a project webhook also deletes its delivery history", async () => {
-  const id = await insertEndpoint("project-delete", "delete");
-  await db().execute({
-    sql: `INSERT INTO webhook_deliveries
-            (id, endpoint_id, event_type, payload, idempotency_key, status)
-          VALUES (?, ?, ?, ?, ?, 'failed')`,
-    args: ["delivery-delete", id, "build.failed", "{}", "event-delete"],
-  });
+  const { id } = await create("project-delete", "delete");
+  await wh.dispatchEvent("project-delete", "build.failed", {});
 
-  assert.equal(await deleteProjectWebhook(id, "project-delete"), true);
-  assert.equal(await deleteProjectWebhook(id, "project-delete"), false);
+  assert.equal(await wh.deleteProjectWebhook(id, "project-delete"), true);
+  assert.equal(await wh.deleteProjectWebhook(id, "project-delete"), false);
 
-  const endpoints = await db().execute({
-    sql: `SELECT 1 FROM webhook_endpoints WHERE id = ?`,
-    args: [id],
-  });
-  const deliveries = await db().execute({
-    sql: `SELECT 1 FROM webhook_deliveries WHERE endpoint_id = ?`,
-    args: [id],
-  });
+  const endpoints = await db().execute({ sql: `SELECT 1 FROM hub_webhook_endpoints WHERE id = ?`, args: [id] });
+  const deliveries = await db().execute({ sql: `SELECT 1 FROM hub_webhook_deliveries WHERE endpoint_id = ?`, args: [id] });
   assert.equal(endpoints.rows.length, 0);
   assert.equal(deliveries.rows.length, 0);
 });
