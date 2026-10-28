@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 import type { WaitlistSort } from "./waitlist-filter";
 import { sqlTime } from "./sql-time";
 import { schemaSql } from "@profullstack/profile";
+import { schemaSql as webhookSchemaSql } from "@profullstack/webhooks";
+import { legacySecretToSpec } from "./webhook-legacy";
 
 let _db: Client | undefined;
 const POSTGRES_URL = /^postgres(ql)?:\/\//i;
@@ -534,6 +536,62 @@ async function initSchema(): Promise<void> {
   `);
   await d.execute(`CREATE INDEX IF NOT EXISTS idx_media_dn ON media (dn, created_at)`);
   await ensureProfileTable();
+  await ensureWebhookHub();
+}
+
+/**
+ * The @profullstack/webhooks tables (its own DDL, `hub_` prefix: the plain
+ * names are the pre-hub tables) and the one-time copy of the pre-hub
+ * endpoints into them. INTEGER becomes bigint on Postgres (libsql-pg), which
+ * the millisecond timestamps need.
+ */
+async function ensureWebhookHub(): Promise<void> {
+  const d = db();
+  for (const stmt of webhookSchemaSql("sqlite", "hub_")) await d.execute(stmt);
+  await migrateLegacyWebhooks();
+}
+
+const legacyMs = (v: unknown): number => {
+  if (v instanceof Date) return v.getTime();
+  const s = String(v ?? "");
+  const t = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s) ? `${s.replace(" ", "T")}Z` : s.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+  return Number.isFinite(t) ? t : Date.now();
+};
+
+/**
+ * Copies endpoints made before the hub into its table, once each (the old row
+ * is stamped hub_migrated_at, so a target deleted later is not copied back).
+ * Each keeps its id (routes that address it by id still work), URL,
+ * subscription and on/off state. The signing key is kept byte for byte: the
+ * old sender used the whole secret string as the HMAC key, the hub reads a
+ * `whsec_` secret as base64, so the stored secret becomes `whsec_` + base64 of
+ * the old string; the same key, so every receiver still verifies.
+ */
+export async function migrateLegacyWebhooks(): Promise<number> {
+  const d = db();
+  await addColumnIfMissing("webhook_endpoints", "hub_migrated_at", "TEXT");
+  await addColumnIfMissing("domain_webhooks", "hub_migrated_at", "TEXT");
+  const sources = [
+    { table: "webhook_endpoints", sql: `SELECT id, project_id AS scope, url, secret, events, active, created_at FROM webhook_endpoints WHERE hub_migrated_at IS NULL`, owner: (r: any) => `project:${r.scope}` },
+    { table: "domain_webhooks", sql: `SELECT id, dn AS scope, url, secret, '["*"]' AS events, active, created_at FROM domain_webhooks WHERE hub_migrated_at IS NULL`, owner: (r: any) => `dn:${String(r.scope).toLowerCase()}` },
+  ];
+  let copied = 0;
+  for (const src of sources) {
+    const rows = (await d.execute(src.sql)).rows as any[];
+    for (const r of rows) {
+      let events = '["*"]';
+      try { const e = JSON.parse(String(r.events)); if (Array.isArray(e) && e.length) events = JSON.stringify(e.map(String)); } catch { /* all events */ }
+      const at = legacyMs(r.created_at);
+      await d.execute({
+        sql: `INSERT INTO hub_webhook_endpoints (id, owner, url, secret, events, description, enabled, failures, disabled_reason, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, '', ?, 0, NULL, ?, ?) ON CONFLICT (id) DO NOTHING`,
+        args: [String(r.id), src.owner(r), String(r.url), legacySecretToSpec(String(r.secret)), events, Number(r.active) === 1 ? 1 : 0, at, at],
+      });
+      await d.execute({ sql: `UPDATE ${src.table} SET hub_migrated_at = ? WHERE id = ?`, args: [sqlTime(), String(r.id)] });
+      copied++;
+    }
+  }
+  return copied;
 }
 
 /**
@@ -897,38 +955,6 @@ export async function renameProject(id: string, name: string): Promise<void> {
   await db().execute({ sql: `UPDATE projects SET name = ? WHERE id = ?`, args: [name, id] });
 }
 
-/** Pause or resume one project webhook without discarding its signing secret. */
-export async function setProjectWebhookActive(
-  id: string,
-  projectId: string,
-  active: boolean,
-): Promise<boolean> {
-  await ensureSchema();
-  const r = await db().execute({
-    sql: `UPDATE webhook_endpoints SET active = ? WHERE id = ? AND project_id = ?`,
-    args: [active ? 1 : 0, id, projectId],
-  });
-  return Number(r.rowsAffected || 0) > 0;
-}
-
-/** Delete one project webhook and its delivery history. */
-export async function deleteProjectWebhook(id: string, projectId: string): Promise<boolean> {
-  await ensureSchema();
-  const d = db();
-  const owned = await d.execute({
-    sql: `SELECT 1 FROM webhook_endpoints WHERE id = ? AND project_id = ? LIMIT 1`,
-    args: [id, projectId],
-  });
-  if (!owned.rows.length) return false;
-
-  await d.execute({ sql: `DELETE FROM webhook_deliveries WHERE endpoint_id = ?`, args: [id] });
-  const r = await d.execute({
-    sql: `DELETE FROM webhook_endpoints WHERE id = ? AND project_id = ?`,
-    args: [id, projectId],
-  });
-  return Number(r.rowsAffected || 0) > 0;
-}
-
 /** Pause or resume one inbound receiver without rotating its shared secret. */
 export async function setProjectInboundWebhookActive(
   id: string,
@@ -968,6 +994,8 @@ export async function deleteProject(id: string): Promise<void> {
   const d = db();
   await d.execute({ sql: `DELETE FROM webhook_deliveries WHERE endpoint_id IN (SELECT id FROM webhook_endpoints WHERE project_id = ?)`, args: [id] });
   await d.execute({ sql: `DELETE FROM webhook_endpoints WHERE project_id = ?`, args: [id] });
+  await d.execute({ sql: `DELETE FROM hub_webhook_deliveries WHERE owner = ?`, args: [`project:${id}`] });
+  await d.execute({ sql: `DELETE FROM hub_webhook_endpoints WHERE owner = ?`, args: [`project:${id}`] });
   await d.execute({ sql: `DELETE FROM inbound_events WHERE inbound_id IN (SELECT id FROM inbound_webhooks WHERE project_id = ?)`, args: [id] });
   await d.execute({ sql: `DELETE FROM inbound_webhooks WHERE project_id = ?`, args: [id] });
   await d.execute({ sql: `DELETE FROM projects WHERE id = ?`, args: [id] });
@@ -1144,8 +1172,7 @@ export async function accountOwnsDomain(accountId: string, dn: string): Promise<
   return Number((a.rows[0] as any)?.is_admin || 0) === 1;
 }
 
-// ---- per-domain webhooks (inbound + outbound) -----------------------------
-export type DomainWebhook = { id: string; dn: string; url: string; secret: string; active: boolean; created_at: string };
+// ---- per-domain webhooks (inbound; outbound targets live in lib/webhooks.ts) --
 
 /** Is this a real domain on the platform (so we accept inbound events for it)? */
 export async function isKnownDomain(dn: string): Promise<boolean> {
@@ -1156,49 +1183,10 @@ export async function isKnownDomain(dn: string): Promise<boolean> {
           UNION SELECT 1 FROM accounts WHERE lower(domain) = ?
           UNION SELECT 1 FROM tenants  WHERE domain = ?
           UNION SELECT 1 FROM auctions WHERE domain = ?
-          UNION SELECT 1 FROM domain_webhooks WHERE dn = ? LIMIT 1`,
-    args: [d, d, d, d, d],
+          UNION SELECT 1 FROM hub_webhook_endpoints WHERE owner = ? LIMIT 1`,
+    args: [d, d, d, d, `dn:${d}`],
   });
   return r.rows.length > 0;
-}
-
-export async function listDomainWebhooks(dn: string): Promise<DomainWebhook[]> {
-  await ensureSchema();
-  const r = await db().execute({ sql: `SELECT * FROM domain_webhooks WHERE dn = ? ORDER BY created_at`, args: [dn.toLowerCase()] });
-  return r.rows.map((x: any) => ({ id: String(x.id), dn: String(x.dn), url: String(x.url), secret: String(x.secret), active: Number(x.active) === 1, created_at: String(x.created_at) }));
-}
-
-/** Active {url,secret} targets for a domain — used by fireDomainEvent. */
-export async function activeDomainWebhooks(dn: string): Promise<{ url: string; secret: string }[]> {
-  await ensureSchema();
-  const r = await db().execute({ sql: `SELECT url, secret FROM domain_webhooks WHERE dn = ? AND active = 1`, args: [dn.toLowerCase()] });
-  return r.rows.map((x: any) => ({ url: String(x.url), secret: String(x.secret) }));
-}
-
-export async function addDomainWebhook(dn: string, url: string, secret: string): Promise<DomainWebhook> {
-  await ensureSchema();
-  const r = await db().execute({
-    sql: `INSERT INTO domain_webhooks (dn, url, secret) VALUES (?, ?, ?) RETURNING *`,
-    args: [dn.toLowerCase(), url, secret],
-  });
-  const x: any = r.rows[0];
-  return { id: String(x.id), dn: String(x.dn), url: String(x.url), secret: String(x.secret), active: true, created_at: String(x.created_at) };
-}
-
-export async function deleteDomainWebhook(id: string, dn: string): Promise<boolean> {
-  await ensureSchema();
-  const r = await db().execute({ sql: `DELETE FROM domain_webhooks WHERE id = ? AND dn = ?`, args: [id, dn.toLowerCase()] });
-  return Number(r.rowsAffected || 0) > 0;
-}
-
-/** Pause or resume one outbound target without discarding its signing secret. */
-export async function setDomainWebhookActive(id: string, dn: string, active: boolean): Promise<boolean> {
-  await ensureSchema();
-  const r = await db().execute({
-    sql: `UPDATE domain_webhooks SET active = ? WHERE id = ? AND dn = ?`,
-    args: [active ? 1 : 0, id, dn.toLowerCase()],
-  });
-  return Number(r.rowsAffected || 0) > 0;
 }
 
 /** Stores an inbound event, keeping only the most recent 200 per domain. */
@@ -1215,19 +1203,6 @@ export async function recordInboundEvent(opts: { dn: string; source?: string | n
           (SELECT id FROM domain_inbound_events WHERE dn = ? ORDER BY created_at DESC LIMIT 200)`,
     args: [dn, dn],
   });
-}
-
-/** Distinct outbound webhook URLs across the given project ids — used to
- *  suggest/pre-fill a domain webhook target from the user's project webhooks. */
-export async function distinctWebhookUrls(projectIds: string[]): Promise<string[]> {
-  await ensureSchema();
-  if (!projectIds.length) return [];
-  const placeholders = projectIds.map(() => "?").join(",");
-  const r = await db().execute({
-    sql: `SELECT DISTINCT url FROM webhook_endpoints WHERE project_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 25`,
-    args: projectIds,
-  });
-  return r.rows.map((x: any) => String(x.url)).filter(Boolean);
 }
 
 export async function listInboundEvents(dn: string, limit = 50): Promise<{ id: string; source: string | null; event_type: string | null; payload: string; created_at: string }[]> {

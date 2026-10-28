@@ -963,10 +963,13 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
   const [active, setActive] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
   const [url, setUrl] = useState("");
+  const [events, setEvents] = useState("");
   const [busy, setBusy] = useState(false);
+  // A new or rotated secret, shown once with a copy button.
+  const [fresh, setFresh] = useState<{ id: string; secret: string } | null>(null);
 
   const load = async (dn: string) => {
-    setActive(dn); setData(null);
+    setActive(dn); setData(null); setFresh(null);
     try {
       const r = await fetch(`/api/domain-webhooks?dn=${encodeURIComponent(dn)}`);
       const d = await r.json();
@@ -995,7 +998,14 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
+      if (payload.action === "test" && Array.isArray(d.results)) {
+        const bad = d.results.filter((x: any) => !x.ok);
+        if (!d.results.length) ok = "No active targets to test.";
+        else if (bad.length) ok = `Test sent: ${d.results.length - bad.length}/${d.results.length} answered 2xx (${bad[0].error || `HTTP ${bad[0].status}`}).`;
+      }
       onOk(ok); await load(active);
+      const secret = d.secret || d.webhook?.secret;
+      if (secret) setFresh({ id: d.id || d.webhook?.id, secret });
     } catch (e: any) { onError(e.message || "Failed."); } finally { setBusy(false); }
   };
 
@@ -1007,7 +1017,7 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
   return (
     <section className="card2">
       <h2>Webhooks</h2>
-      <p className="sub">Every parked domain gets hosted webhooks — no server to run. <b>Inbound:</b> POST events to the URL below. <b>Outbound:</b> we POST domain events (waitlist.signup, bid.placed/won/accepted) to your URLs, signed (Standard Webhooks).</p>
+      <p className="sub">Every parked domain gets hosted webhooks — no server to run. <b>Inbound:</b> POST events to the URL below. <b>Outbound:</b> we POST domain events (waitlist.signup, bid.placed/won/accepted, inbound.*) to your URLs as CloudEvents, signed (Standard Webhooks), retried with backoff. Also scriptable: <code>/api/v1/webhooks?dn=&lt;domain&gt;</code> with an API key.</p>
       <div className="tabs" style={{ flexWrap: "wrap" }}>
         {domains.map((d) => (
           <button key={d.domain} className={`tab${active === d.domain ? " on" : ""}`} onClick={() => load(d.domain)}>{d.domain}</button>
@@ -1025,16 +1035,32 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
             {data.knownUrls?.length ? (
               <datalist id="known-webhook-urls">{data.knownUrls.map((u: string) => <option key={u} value={u} />)}</datalist>
             ) : null}
-            <button className="btn2" disabled={busy || !url.trim()} onClick={() => { act({ url: url.trim() }, "Webhook added."); setUrl(""); }}>Add</button>
-            <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "test" }, "Test event dispatched.")}>Send test</button>
+            <input className="inp" style={{ maxWidth: 220 }} placeholder="events: all, or e.g. bid.*, waitlist.signup" title={`Comma-separated. Available: ${(data.eventTypes || []).join(", ")}`} value={events} onChange={(e) => setEvents(e.target.value)} />
+            <button className="btn2" disabled={busy || !url.trim()} onClick={() => { act({ url: url.trim(), ...(events.trim() ? { events: events.trim() } : {}) }, "Webhook added. Copy its secret now."); setUrl(""); setEvents(""); }}>Add</button>
+            <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "test" }, "Test event delivered.")}>Send test</button>
           </div>
+          {fresh && (
+            <div className="row">
+              <input className="inp" readOnly value={fresh.secret} />
+              <button className="btn2 ghost" onClick={() => copyText(fresh.secret)}>Copy secret</button>
+              <button className="btn2 ghost" onClick={() => setFresh(null)}>Done</button>
+            </div>
+          )}
           <ul className="list">
             {(!data.webhooks || data.webhooks.length === 0) && <li className="muted">No outbound targets yet.</li>}
             {data.webhooks?.map((w: any) => (
               <li key={w.id}>
-                <span>{w.url} <span className="muted">· {w.active ? "active" : "paused"} · secret {String(w.secret).slice(0, 12)}…</span></span>
+                <span>{w.url} <span className="muted">· {(w.events || ["*"]).join(", ") === "*" ? "all events" : (w.events || []).join(", ")} · {w.active ? "active" : w.disabled_reason ? `off: ${w.disabled_reason}` : "paused"} · secret {String(w.secret).slice(0, 12)}…</span></span>
                 <span className="row-actions">
                   <button className="btn2 ghost" onClick={() => copyText(w.secret)}>Copy secret</button>
+                  <button className="btn2 ghost" disabled={busy || !w.active} onClick={() => act({ action: "test", id: w.id }, "Test event delivered.")}>Test</button>
+                  <button
+                    className="btn2 ghost"
+                    disabled={busy}
+                    onClick={() => { if (window.confirm("Rotate the signing secret? The old one stops working at once.")) act({ action: "rotate", id: w.id }, "Secret rotated. Copy the new one now."); }}
+                  >
+                    Rotate
+                  </button>
                   <button
                     className="btn2 ghost"
                     disabled={busy}
@@ -1047,6 +1073,17 @@ function DomainWebhooksPanel({ onError, onOk }: { onError: (m: string) => void; 
                   </button>
                   <button className="btn2 ghost" disabled={busy} onClick={() => act({ action: "delete", id: w.id }, "Removed.")}>Delete</button>
                 </span>
+              </li>
+            ))}
+          </ul>
+
+          <h3 className="ed-h">Recent deliveries ({data.deliveries?.length || 0})</h3>
+          <ul className="list">
+            {(!data.deliveries || data.deliveries.length === 0) && <li className="muted">Nothing sent yet.</li>}
+            {data.deliveries?.map((d: any) => (
+              <li key={d.id}>
+                <span><b>{d.event_type}</b> <span className="muted">· {d.status} · {d.attempts} attempt{d.attempts === 1 ? "" : "s"}{d.last_status ? ` · HTTP ${d.last_status}` : ""}{d.last_error ? ` · ${String(d.last_error).slice(0, 60)}` : ""}</span></span>
+                <span className="muted">{d.created_at}</span>
               </li>
             ))}
           </ul>

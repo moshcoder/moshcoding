@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession, authConfigured, SESSION_COOKIE } from "@/lib/session";
 import { safeDomain } from "@/lib/config";
+import { accountIdForCoinpay, accountOwnsDomain, listInboundEvents } from "@/lib/db";
 import {
-  accountIdForCoinpay,
-  accountOwnsDomain,
-  listDomainWebhooks,
   addDomainWebhook,
   deleteDomainWebhook,
-  setDomainWebhookActive,
-  listInboundEvents,
   distinctWebhookUrls,
-} from "@/lib/db";
-import { fireDomainEvent, newSecret, isInternalUrl, isSelfWebhookUrl } from "@/lib/webhooks";
+  domainDeliveries,
+  isInternalUrl,
+  isSelfWebhookUrl,
+  listDomainWebhooks,
+  rotateDomainWebhookSecret,
+  setDomainWebhookActive,
+  testDomainWebhooks,
+  WebhookError,
+  WEBHOOK_EVENT_TYPES,
+} from "@/lib/webhooks";
 import { listAccessibleProjectIds } from "@/lib/authz";
 
 export const runtime = "nodejs";
@@ -46,19 +50,21 @@ export async function GET(req: NextRequest) {
     try { knownUrls = await distinctWebhookUrls(await listAccessibleProjectIds(s.sub)); } catch { /* best-effort */ }
   }
 
-  const [webhooks, events] = await Promise.all([listDomainWebhooks(dn), listInboundEvents(dn, 25)]);
+  const [webhooks, events, deliveries] = await Promise.all([listDomainWebhooks(dn), listInboundEvents(dn, 25), domainDeliveries(dn, 25)]);
   // Don't re-suggest URLs already added as targets for this domain.
   const have = new Set(webhooks.map((w) => w.url));
   return NextResponse.json({
     dn,
     inboundUrl: inboundUrl(req, dn),
-    webhooks: webhooks.map((w) => ({ id: w.id, url: w.url, secret: w.secret, active: w.active, created_at: w.created_at })),
+    webhooks: webhooks.map((w) => ({ id: w.id, url: w.url, secret: w.secret, events: w.events, active: w.active, failures: w.failures, disabled_reason: w.disabled_reason, created_at: w.created_at })),
     events,
+    deliveries: deliveries.map(({ payload: _p, ...d }) => d),
+    eventTypes: WEBHOOK_EVENT_TYPES,
     knownUrls: knownUrls.filter((u) => !have.has(u)),
   });
 }
 
-// POST /api/domain-webhooks — owner: add, pause/resume, delete, or test a target.
+// POST /api/domain-webhooks — owner: add, pause/resume, rotate, delete, or test a target.
 export async function POST(req: NextRequest) {
   const accountId = await resolveAccountId(req);
   if (!accountId) return NextResponse.json({ error: "Sign in to manage webhooks." }, { status: 401 });
@@ -84,9 +90,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id, active: body.active });
   }
 
+  if (body.action === "rotate") {
+    const secret = await rotateDomainWebhookSecret(String(body.id || ""), dn);
+    if (!secret) return NextResponse.json({ error: "Webhook target not found." }, { status: 404 });
+    return NextResponse.json({ ok: true, id: String(body.id), secret });
+  }
+
+  // Sends webhook.test now: to one target (`id`) or every active one.
   if (body.action === "test") {
-    await fireDomainEvent(dn, "test.ping", { message: "Test event from moshcoding", dn });
-    return NextResponse.json({ ok: true, sent: true });
+    try {
+      const results = await testDomainWebhooks(dn, body.id ? String(body.id) : undefined);
+      return NextResponse.json({ ok: true, sent: results.length > 0, results });
+    } catch (e) {
+      if (e instanceof WebhookError) return NextResponse.json({ error: e.message }, { status: e.status });
+      throw e;
+    }
   }
 
   // Default: add an outbound target.
@@ -100,6 +118,11 @@ export async function POST(req: NextRequest) {
   if (isSelfWebhookUrl(url)) {
     return NextResponse.json({ error: "That's an inbound receiver URL — sending events there would loop back into this dashboard. Use the URL of your own server." }, { status: 400 });
   }
-  const wh = await addDomainWebhook(dn, url, newSecret());
-  return NextResponse.json({ ok: true, webhook: { id: wh.id, url: wh.url, secret: wh.secret, active: wh.active } }, { status: 201 });
+  try {
+    const wh = await addDomainWebhook(dn, url, body.events);
+    return NextResponse.json({ ok: true, webhook: { id: wh.id, url: wh.url, secret: wh.secret, events: wh.events, active: wh.active } }, { status: 201 });
+  } catch (e) {
+    if (e instanceof WebhookError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
 }

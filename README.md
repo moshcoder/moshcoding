@@ -92,6 +92,25 @@ extension outranks the pit; `moshpit` lets a registered name win anyway, see
 [docs/moshpit-dns.md](docs/moshpit-dns.md)). Tables are created
 automatically on first request.
 
+### Outbound webhooks
+
+Parked domains and projects send events through
+[@profullstack/webhooks](https://github.com/profullstack/webhooks): CloudEvents
+bodies, Standard Webhooks signatures (`webhook-id`, `webhook-timestamp`,
+`webhook-signature`), a durable queue in the database with retries over about
+three days, and a delivery log. Domain events: `waitlist.signup`, `bid.placed`,
+`bid.won`, `bid.accepted`, `inbound.*` (whatever arrived at
+`/api/webhooks/<domain>`, relayed). Manage targets in the dashboard
+(Webhooks tab) or over HTTP with an API key:
+
+    curl -H "Authorization: Bearer $KEY" "https://moshcoding.com/api/v1/webhooks?dn=example.com"
+    curl -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+      -d '{"url":"https://example.com/hook","events":["bid.*"]}' \
+      "https://moshcoding.com/api/v1/webhooks?dn=example.com"
+
+Also `/:id` (GET/PATCH/DELETE), `/:id/secret`, `/:id/rotate`, `/:id/test`,
+`/:id/deliveries`, `/deliveries`, `/deliveries/:id/retry`.
+
 ### Deploy (Railway)
 
 Builds from the **Dockerfile** (`oven/bun` → `bun run build` → `bun run start`);
