@@ -42,6 +42,13 @@ export default function LoginPage() {
       </div>
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}
 
+      {coinpay && (
+        <div className="card2">
+          <a className="btn2" href="/auth/login">Sign in with CoinPay</a>
+          <p className="sub" style={{ marginTop: 12 }}>— or with your email and password —</p>
+        </div>
+      )}
+
       <form className="card2" onSubmit={submit}>
         <div className="row"><input className="inp" type="email" placeholder="you@email.com" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <div className="row"><input className="inp" type="password" placeholder="Password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
@@ -50,12 +57,6 @@ export default function LoginPage() {
           <a className="btn2 ghost" href="/reset">Forgot password?</a>
         </div>
         <p className="sub" style={{ marginTop: 12 }}>No account? <a href="/signup">Claim your page — free</a></p>
-        {coinpay && (
-          <>
-            <p className="sub" style={{ marginTop: 12 }}>— or —</p>
-            <a className="btn2 ghost" href="/auth/login">Log in with CoinPay</a>
-          </>
-        )}
       </form>
     </div>
   );

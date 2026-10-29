@@ -575,7 +575,57 @@ function AccountPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (
         <input className="inp" placeholder="wallet address" value={wallet} onChange={(e) => setWallet(e.target.value)} />
         <button className="btn2 ghost" onClick={saveWallet}>Save wallet</button>
       </div>
+
+      <CoinpayCard onError={onError} onOk={onOk} />
     </section>
+  );
+}
+
+const COINPAY_RESULT: Record<string, { t: string; ok: boolean }> = {
+  linked: { t: "CoinPay connected. You can sign in with it now.", ok: true },
+  taken: { t: "That CoinPay account is already linked to another moshcoding account.", ok: false },
+  already_linked: { t: "This account already has a different CoinPay account connected.", ok: false },
+  no_account: { t: "Sign in to your moshcoding account first.", ok: false },
+};
+
+/** Connect / Disconnect CoinPay. Connecting needs a password sign-in (never by email match). */
+function CoinpayCard({ onError, onOk }: { onError: (m: string) => void; onOk: (m: string) => void }) {
+  const [st, setSt] = useState<{ enabled: boolean; linked: boolean; canDisconnect: boolean } | null>(null);
+  const load = () => fetch("/api/account/coinpay").then((r) => r.ok ? r.json() : null).then(setSt).catch(() => setSt(null));
+  useEffect(() => {
+    load();
+    const res = new URLSearchParams(window.location.search).get("coinpay");
+    const m = res ? COINPAY_RESULT[res] : null;
+    if (m) (m.ok ? onOk : onError)(m.t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!st?.enabled) return null;
+  const disconnect = async () => {
+    try {
+      const r = await fetch("/api/account/coinpay", { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      onOk("CoinPay disconnected.");
+      load();
+    } catch (e: any) { onError(e.message || "Couldn't disconnect."); }
+  };
+  return (
+    <>
+      <h3 className="ed-h">Sign in with CoinPay</h3>
+      {st.linked ? (
+        <div className="row">
+          <span className="pill">Connected</span>
+          {st.canDisconnect
+            ? <button className="btn2 ghost" onClick={disconnect}>Disconnect CoinPay</button>
+            : <span className="muted">CoinPay is this account&apos;s only sign-in, so it stays connected.</span>}
+        </div>
+      ) : (
+        <div className="row">
+          <a className="btn2 ghost" href="/auth/login?mode=connect">Connect CoinPay</a>
+          <span className="muted">Then sign in with CoinPay as well as your password.</span>
+        </div>
+      )}
+    </>
   );
 }
 

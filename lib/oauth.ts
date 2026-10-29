@@ -1,4 +1,19 @@
-import crypto from "node:crypto";
+// Sign in with CoinPay: a confidential OIDC client. Authorization code +
+// PKCE S256 + state + nonce, the client secret on the code exchange, and the
+// id_token checked (issuer, audience, expiry, nonce) with a userinfo `sub`
+// that must match it. The protocol half lives in the house package
+// @profullstack/coinpay-onboard/oauth; this file only adds our config.
+//
+// Bind the result to an account by `sub` only (lib/db accountIdForCoinpay).
+// CoinPay never verifies addresses: the email is contact information.
+import {
+  authorizeUrl as cpAuthorizeUrl,
+  finishSignIn,
+  pkce,
+  randomToken,
+  sameState,
+  SIGN_IN_SCOPES,
+} from "@profullstack/coinpay-onboard/oauth";
 
 export const COINPAY_ISSUER = (process.env.COINPAY_ISSUER || "https://coinpayportal.com").replace(/\/$/, "");
 export const COINPAY_CLIENT_ID = process.env.COINPAY_CLIENT_ID || "";
@@ -9,52 +24,52 @@ export const APP_BASE_URL = (process.env.APP_BASE_URL || "http://localhost:8080"
  *  callers pass an explicit one derived from the host -- see lib/oauth-origin. */
 export const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || `${APP_BASE_URL}/auth/coinpay/callback`;
 
-const b64url = (buf: crypto.BinaryLike) => Buffer.from(buf as any).toString("base64url");
+/** "login" signs in (or creates a CoinPay-bound account); "connect" links
+ *  CoinPay to the password account that is already signed in. */
+export type OAuthMode = "login" | "connect";
+
+/** The short-lived cookies the start route sets and the callback reads. */
+export const PENDING_COOKIES = { verifier: "cp_pkce", state: "cp_state", nonce: "cp_nonce", mode: "cp_mode" } as const;
 
 export function makePkce() {
-  const verifier = b64url(crypto.randomBytes(32));
-  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
-  const state = b64url(crypto.randomBytes(16));
-  return { verifier, challenge, state };
+  const { verifier, challenge } = pkce();
+  return { verifier, challenge, state: randomToken(24), nonce: randomToken(24) };
 }
 
-export function authorizeUrl(challenge: string, state: string, redirectUri: string = REDIRECT_URI): string {
-  const u = new URL(`${COINPAY_ISSUER}/api/oauth/authorize`);
-  u.search = new URLSearchParams({
-    response_type: "code",
-    client_id: COINPAY_CLIENT_ID,
-    redirect_uri: redirectUri,
-    scope: "openid email profile",
+export function authorizeUrl(challenge: string, state: string, redirectUri: string = REDIRECT_URI, nonce?: string): string {
+  return cpAuthorizeUrl({
+    base: COINPAY_ISSUER,
+    clientId: COINPAY_CLIENT_ID,
+    redirectUri,
     state,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-  }).toString();
-  return u.toString();
+    challenge,
+    nonce,
+    scopes: SIGN_IN_SCOPES,
+  });
 }
 
-// `redirectUri` must byte-match the one sent to authorize, or the IdP rejects
-// the exchange. Callers derive both from lib/oauth-origin so they agree.
-export async function exchangeCode(code: string, verifier: string, redirectUri: string = REDIRECT_URI) {
-  const res = await fetch(`${COINPAY_ISSUER}/api/oauth/token`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-      client_id: COINPAY_CLIENT_ID,
-      client_secret: COINPAY_CLIENT_SECRET,
-      code_verifier: verifier,
-    }),
-  });
-  if (!res.ok) throw new Error(`token exchange failed (${res.status})`);
-  return res.json();
+/** Constant-time state compare; false when either side is missing. */
+export function stateMatches(expected: string | null | undefined, received: string | null | undefined): boolean {
+  return sameState(expected, received);
 }
 
-export async function fetchUserinfo(accessToken: string) {
-  const res = await fetch(`${COINPAY_ISSUER}/api/oauth/userinfo`, {
-    headers: { authorization: `Bearer ${accessToken}` },
+/**
+ * Code -> tokens -> checked id_token -> userinfo. `redirectUri` must byte-match
+ * the one sent to authorize (both come from lib/oauth-origin). Throws on any
+ * failure, including a nonce or audience mismatch.
+ */
+export async function finishCoinpaySignIn(
+  input: { code: string; verifier: string; nonce: string; redirectUri: string },
+  doFetch?: typeof fetch,
+) {
+  return finishSignIn({
+    code: input.code,
+    verifier: input.verifier,
+    nonce: input.nonce,
+    redirectUri: input.redirectUri,
+    clientId: COINPAY_CLIENT_ID,
+    clientSecret: COINPAY_CLIENT_SECRET,
+    base: COINPAY_ISSUER,
+    fetch: doFetch,
   });
-  if (!res.ok) throw new Error(`userinfo failed (${res.status})`);
-  return res.json();
 }
