@@ -22,17 +22,16 @@ export async function GET(req: NextRequest) {
   if (!coinpayConfigured()) {
     return new NextResponse("CoinPay login is not configured yet.", { status: 503 });
   }
-  const mode = req.nextUrl.searchParams.get("mode") === "connect" ? "connect" : "login";
-  if (mode === "connect") {
-    const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
-    if (!s?.sub?.startsWith("acct:")) {
-      return NextResponse.redirect(new URL("/login", req.nextUrl.origin));
-    }
-  }
   const secure = requestIsHttps(req);
   // Send the IdP back to the host the user is actually on, so the host-only
   // pending cookies set below are still readable at the callback.
   const origin = resolveOrigin(requestHosts(req.headers), secure);
+  const mode = req.nextUrl.searchParams.get("mode") === "connect" ? "connect" : "login";
+  if (mode === "connect") {
+    const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
+    // req.nextUrl.origin is the container's own address behind the proxy.
+    if (!s?.sub?.startsWith("acct:")) return NextResponse.redirect(`${origin}/login`);
+  }
   const { verifier, challenge, state, nonce } = makePkce();
   const res = NextResponse.redirect(authorizeUrl(challenge, state, redirectUriFor(origin), nonce));
   const opts = { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: 600 };

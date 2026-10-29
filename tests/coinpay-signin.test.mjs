@@ -77,8 +77,9 @@ test("start sends PKCE S256, state and nonce; connect needs a password session",
   assert.ok(loc.searchParams.get("state") && loc.searchParams.get("nonce") && loc.searchParams.get("code_challenge"));
   assert.equal(loc.searchParams.get("redirect_uri"), "https://moshcoding.com/auth/coinpay/callback");
 
-  const noSession = await loginRoute.GET(new NextRequest("https://moshcoding.com/auth/login?mode=connect", { headers: { host: "moshcoding.com" } }));
-  assert.equal(new URL(noSession.headers.get("location")).pathname, "/login");
+  // behind the proxy the request URL is the container's own address
+  const noSession = await loginRoute.GET(new NextRequest("http://localhost:8080/auth/login?mode=connect", { headers: { host: "moshcoding.com", "x-forwarded-proto": "https" } }));
+  assert.equal(noSession.headers.get("location"), "https://moshcoding.com/login");
 });
 
 function callbackReq({ state = "s1", cookieState = "s1", mode, session } = {}) {
