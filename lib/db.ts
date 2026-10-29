@@ -765,6 +765,7 @@ export async function createAccount(opts: {
 }): Promise<Account> {
   await ensureSchema();
   const email = opts.email.trim().toLowerCase();
+  if (isCoinpayPlaceholderEmail(email)) throw new Error("reserved email address");
   // A domain someone else holds is never handed over by a sign-up.
   if (opts.domain && (await domainClaimedByOther(null, opts.domain))) throw new DomainTakenError(opts.domain);
   const seedConfig = Object.keys(opts.handles || {}).length ? { socials: opts.handles } : {};
@@ -807,6 +808,7 @@ export async function getAccountByEmail(
 export async function findOrCreateAccountByEmail(email: string): Promise<Account> {
   await ensureSchema();
   const e = email.trim().toLowerCase();
+  if (isCoinpayPlaceholderEmail(e)) throw new Error("reserved email address");
   const existing = await getAccountByEmail(e);
   if (existing) return existing;
   const res = await db().execute({
@@ -820,33 +822,107 @@ export async function findOrCreateAccountByEmail(email: string): Promise<Account
   return rowToAccount(res.rows[0]);
 }
 
+/** Address domain for accounts made by a CoinPay sign-in. `.invalid` never
+ *  resolves, so mail to it goes nowhere and nobody can sign up with it. */
+export const COINPAY_PLACEHOLDER_DOMAIN = "coinpay.moshcoding.invalid";
+
+/** The unique, unroutable account email of a CoinPay-only account. CoinPay does
+ *  not verify addresses, so its email is never used as an account email. */
+export function coinpayPlaceholderEmail(sub: string): string {
+  return `${sub.toLowerCase().replace(/[^a-z0-9-]/g, "-")}@${COINPAY_PLACEHOLDER_DOMAIN}`;
+}
+
+export function isCoinpayPlaceholderEmail(email: string | null | undefined): boolean {
+  return String(email || "").trim().toLowerCase().endsWith(`@${COINPAY_PLACEHOLDER_DOMAIN}`);
+}
+
 /**
- * The account a CoinPay sign-in acts as. Bound by CoinPay `sub`, not by email:
- * CoinPay does not verify addresses, so matching on email alone would let
- * anyone who registers a CoinPay account with your address open your account.
+ * The account a CoinPay sign-in acts as. Bound by CoinPay `sub` only: CoinPay
+ * does not verify email addresses, so matching on email would let anyone who
+ * registers a CoinPay account with your address open your account (and, for an
+ * email-only affiliate account, change its payout wallet).
  *
  * - bound to this sub: that account.
- * - an account with this email that has no password and no CoinPay binding
- *   (made by a previous CoinPay sign-in or the email-only affiliate form):
- *   bind it to this sub and use it.
- * - no account with this email: create one, bound.
- * - otherwise (a password account, or bound to another CoinPay identity):
- *   null. Sign in with the password instead.
+ * - otherwise: a new account bound to this sub, whose account email is an
+ *   unroutable placeholder (coinpayPlaceholderEmail). The CoinPay email stays
+ *   contact info in `users`.
+ *
+ * An existing account gets CoinPay only through linkCoinpay(), from a signed-in
+ * session ("Connect CoinPay" in the dashboard). `_email` is accepted for the
+ * old call sites and deliberately ignored.
  */
-export async function accountIdForCoinpay(sub: string, email: string | null | undefined): Promise<string | null> {
+export async function accountIdForCoinpay(sub: string, _email?: string | null): Promise<string | null> {
   await ensureSchema();
   if (!sub || sub.startsWith("acct:")) return null;
   const bound = await db().execute({ sql: `SELECT id FROM accounts WHERE coinpay_sub = ?`, args: [sub] });
   if (bound.rows[0]) return String(bound.rows[0].id);
-  if (!email) return null;
-  const acct = await findOrCreateAccountByEmail(email);
-  const claim = await db().execute({
-    sql: `UPDATE accounts SET coinpay_sub = ?
-           WHERE id = ? AND coinpay_sub IS NULL AND password_hash = 'oauth'
-           RETURNING id`,
-    args: [sub, acct.id],
+  // "oauth" sentinel hash never matches scrypt-hex, so password login stays off.
+  // ON CONFLICT DO NOTHING: two first requests racing both land on one row.
+  await db().execute({
+    sql: `INSERT INTO accounts (email, password_hash, password_salt, config, is_admin, status, plan, coinpay_sub)
+          VALUES (?, 'oauth', ?, '{}', 0, 'pending', 'free', ?)
+          ON CONFLICT DO NOTHING`,
+    args: [coinpayPlaceholderEmail(sub), randomBytes(16).toString("hex"), sub],
   });
-  return claim.rows[0] ? String(claim.rows[0].id) : null;
+  const made = await db().execute({ sql: `SELECT id FROM accounts WHERE coinpay_sub = ?`, args: [sub] });
+  return made.rows[0] ? String(made.rows[0].id) : null;
+}
+
+export type LinkResult = { ok: boolean; reason?: "taken" | "already_linked" | "no_account" };
+
+/**
+ * Links a CoinPay identity to an account the caller is signed in to. Refused
+ * when the account already has a CoinPay identity or the identity is bound to
+ * another account (including one made by an earlier CoinPay-only sign-in).
+ */
+export async function linkCoinpay(accountId: string, sub: string): Promise<LinkResult> {
+  await ensureSchema();
+  if (!sub || sub.startsWith("acct:")) return { ok: false, reason: "no_account" };
+  const acct = await db().execute({ sql: `SELECT coinpay_sub FROM accounts WHERE id = ?`, args: [accountId] });
+  if (!acct.rows[0]) return { ok: false, reason: "no_account" };
+  const current = acct.rows[0].coinpay_sub ? String(acct.rows[0].coinpay_sub) : null;
+  if (current === sub) return { ok: true };
+  if (current) return { ok: false, reason: "already_linked" };
+  const other = await db().execute({ sql: `SELECT id FROM accounts WHERE coinpay_sub = ?`, args: [sub] });
+  if (other.rows[0]) return { ok: false, reason: "taken" };
+  try {
+    const res = await db().execute({
+      sql: `UPDATE accounts SET coinpay_sub = ? WHERE id = ? AND coinpay_sub IS NULL RETURNING id`,
+      args: [sub, accountId],
+    });
+    return res.rows[0] ? { ok: true } : { ok: false, reason: "already_linked" };
+  } catch (err: any) {
+    if (/unique|duplicate/i.test(String(err?.message))) return { ok: false, reason: "taken" };
+    throw err;
+  }
+}
+
+/**
+ * Removes the CoinPay link, but only from an account that has a password to
+ * sign in with: for a CoinPay-only account it is the only way in.
+ */
+export async function unlinkCoinpay(accountId: string): Promise<{ ok: boolean; reason?: "only_login" | "not_linked" }> {
+  await ensureSchema();
+  const acct = await db().execute({ sql: `SELECT coinpay_sub, password_hash FROM accounts WHERE id = ?`, args: [accountId] });
+  const r = acct.rows[0];
+  if (!r || !r.coinpay_sub) return { ok: false, reason: "not_linked" };
+  if (!hasPassword(r.password_hash)) return { ok: false, reason: "only_login" };
+  await db().execute({ sql: `UPDATE accounts SET coinpay_sub = NULL WHERE id = ?`, args: [accountId] });
+  return { ok: true };
+}
+
+/** A real password hash, not the "oauth" sentinel of a passwordless account. */
+export function hasPassword(hash: unknown): boolean {
+  return typeof hash === "string" && hash !== "" && hash !== "oauth";
+}
+
+/** Whether this account has CoinPay linked and could drop it. */
+export async function coinpayLinkStatus(accountId: string): Promise<{ linked: boolean; canDisconnect: boolean }> {
+  await ensureSchema();
+  const acct = await db().execute({ sql: `SELECT coinpay_sub, password_hash FROM accounts WHERE id = ?`, args: [accountId] });
+  const r = acct.rows[0];
+  const linked = Boolean(r?.coinpay_sub);
+  return { linked, canDisconnect: linked && hasPassword(r?.password_hash) };
 }
 
 /** Sets the tenant domain (used when a CoinPay user claims a page from the dashboard). Throws DomainTakenError for a domain another account holds. */

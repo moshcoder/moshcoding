@@ -74,7 +74,8 @@ test("ADMIN_EMAILS never grants admin from an unverified email", async () => {
   const again = await dbm.findOrCreateAccountByEmail("boss@example.com");
   assert.equal(again.id, native.id);
   assert.equal(again.is_admin, false);
-  assert.equal(await dbm.accountIdForCoinpay("sub-attacker", "boss@example.com"), null, "a CoinPay sign-in cannot take a password account");
+  const other = await dbm.accountIdForCoinpay("sub-attacker", "boss@example.com");
+  assert.notEqual(other, native.id, "a CoinPay sign-in cannot take a password account");
 });
 
 test("a CoinPay sign-in is bound by sub, not matched by email", async () => {
@@ -83,10 +84,13 @@ test("a CoinPay sign-in is bound by sub, not matched by email", async () => {
   assert.ok(id);
   assert.equal(await dbm.accountIdForCoinpay("sub-1", email), id);
   assert.equal(await dbm.accountIdForCoinpay("sub-1", "changed@example.com"), id, "bound sub wins over email");
-  assert.equal(await dbm.accountIdForCoinpay("sub-2", email), null, "another CoinPay identity with the same email is refused");
-  // an email-only affiliate account (no password, unbound) is claimed by the first CoinPay sign-in
+  const id2 = await dbm.accountIdForCoinpay("sub-2", email);
+  assert.ok(id2 && id2 !== id, "another CoinPay identity with the same email gets its own account");
+  // an email-only affiliate account (no password, unbound) is NOT claimed by email
   const joined = await dbm.findOrCreateAccountByEmail(uniq("join"));
-  assert.equal(await dbm.accountIdForCoinpay("sub-3", joined.email), joined.id);
+  const id3 = await dbm.accountIdForCoinpay("sub-3", joined.email);
+  assert.notEqual(id3, joined.id);
+  assert.equal((await dbm.getAccountById(joined.id)).coinpay_sub, null);
   assert.equal(await dbm.accountIdForCoinpay("acct:whatever", joined.email), null);
 });
 

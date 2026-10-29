@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ProfileFields } from "@profullstack/profile/react";
 
 // The shared Profullstack profile, minus email (this form has its own box).
@@ -25,6 +25,11 @@ export default function SignupPage() {
   const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
+  const [coinpay, setCoinpay] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/me").then((r) => r.json()).then((m) => setCoinpay(Boolean(m?.coinpayEnabled))).catch(() => {});
+  }, []);
 
   const setHandle = (k: string, v: string) => setHandles((h) => ({ ...h, [k]: v }));
 
@@ -56,6 +61,13 @@ export default function SignupPage() {
         <div><h1>Claim your page</h1><p className="sub"><b>Free</b> — set up your linktree at moshcoding.com/?dn=your-domain in seconds.</p></div>
         <a className="btn2 ghost" href="/">← home</a>
       </div>
+
+      {coinpay && (
+        <div className="card2">
+          <a className="btn2" href="/auth/login">Sign up with CoinPay</a>
+          <p className="sub" style={{ marginTop: 12 }}>— or create a password account below —</p>
+        </div>
+      )}
 
       <p className="earn-banner">🤘 Earn up to <b>80% commission</b> on all fees generated with your custom affiliate code.</p>
       {msg && <p className={`dash-msg ${msg.ok ? "ok" : "err"}`}>{msg.t}</p>}

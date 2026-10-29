@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@profullstack/affiliates": "0.3.0",
+    "@profullstack/coinpay-onboard": "0.3.1",
     "@profullstack/footer": "latest",
     "@profullstack/libsql-pg": "^0.1.4",
     "@profullstack/profile": "0.1.6",
