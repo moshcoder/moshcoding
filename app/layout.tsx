@@ -5,6 +5,7 @@ import PitFooter from "@/components/PitFooter";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://moshcoding.com"),
+  manifest: "/manifest.webmanifest",
   title: "#MOSHCODING — Code hard. Mosh harder.",
   description:
     "A Spotify playlist for developers who code hard and mosh harder. Point any domain at moshcoding for an instant metal coming-soon page with an email waitlist.",
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="scan" aria-hidden="true" />
         {children}
         <Script data-site="51f5ac03-7e3a-452c-9c8d-5737bbbc30a5" src="https://crawlproof.com/stats.js" strategy="afterInteractive" />
+        <Script src="/pwa-register.js" strategy="afterInteractive" />
         <PitFooter />
       </body>
     </html>
