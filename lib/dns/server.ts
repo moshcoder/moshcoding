@@ -5,6 +5,7 @@
 // policy serves plain DNS, DNS over TCP, and DNS over HTTPS without three
 // copies of the decision-making that could drift apart.
 
+import type { InstanceResolver } from './instances';
 import dgram from "node:dgram";
 import net from "node:net";
 
@@ -49,6 +50,7 @@ export type QueryContext = {
 
 export type DnsServerOptions = {
   registry: RegistryClient;
+  instances?: InstanceResolver;
   forwarder: Forwarder;
   gateway: GatewayResolver;
   mode?: ResolveMode;
@@ -342,6 +344,13 @@ export function createDnsServer(options: DnsServerOptions): DnsServer {
       if (plan.action === "refuse") {
         stats.refused++;
         return finish(`refused(${plan.reason})`, errorResponse(query, plan.rcode));
+      }
+
+      const instance = await options.instances?.answer(query);
+      if (instance) {
+        if (instance.flags.rcode === 0) await completeCnameChain(instance, question);
+        stats.moshpit++;
+        return finish("instance", encodeMessage(instance));
       }
 
       if (plan.action === "forward") {

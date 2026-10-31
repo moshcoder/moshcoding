@@ -11,6 +11,7 @@
 // with no configuration at all this resolves Moshpit names from the public
 // registry and forwards everything else to 8.8.8.8 and 1.1.1.1.
 
+import { createInstanceResolver } from "../lib/dns/instances";
 import { createDohServer } from "../lib/dns/doh";
 import { createGatewayResolver } from "../lib/dns/gateway";
 import { DEFAULT_RESOLVE_MODE, type ResolveMode } from "../lib/dns/policy";
@@ -95,7 +96,12 @@ const DEFAULT_BURST = 600;
 // decision rather than a default a resolver should assume.
 const catchAll = /^(1|true|yes|on)$/i.test(env.MOSHPIT_DNS_CATCHALL ?? "");
 
+const instanceConfig = JSON.parse(env.MOSHPIT_INSTANCES ?? '[{"suffix":"w3bs.org","registry":"https://w3bs.org","gateway":"w3bs.org"}]');
+const instances = createInstanceResolver(instanceConfig.map((r: {suffix:string;registry:string;gateway:string;ipv4?:string[];ipv6?:string[]}) => ({
+  suffix:r.suffix, registry:r.registry, gateway:createGatewayResolver({host:r.gateway,forwarder,ipv4:r.ipv4??[],ipv6:r.ipv6??[]}),
+})));
 const dns = createDnsServer({
+  instances,
   registry,
   forwarder,
   gateway,

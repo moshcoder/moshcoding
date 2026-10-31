@@ -261,3 +261,11 @@ internet is unaffected: an outage here costs the namespace, not the web.
 Code: `lib/dns/` (`wire.ts` codec, `policy.ts` the namespace decision,
 `registry.ts`, `upstream.ts`, `answers.ts`, `server.ts`, `doh.ts`), entry point
 `scripts/moshpit-dns.ts`, tests in `tests/dns-*.test.mjs`.
+
+### Separate Moshpit instances
+
+`MOSHPIT_INSTANCES` is a JSON list of explicit realm authorities. The default contains W3BS: `[{"suffix":"w3bs.org","registry":"https://w3bs.org","gateway":"w3bs.org"}]`. Set `[]` to disable instance routing. Each configured registry must be HTTPS; query text never chooses the registry URL. Optional `ipv4`/`ipv6` arrays pin that instance's gateway addresses.
+
+Only two-label names under the configured suffix (for example `dumb.fuck.w3bs.org`) enter that instance. Bare `dumb.fuck` remains in the primary network. Active instance records override public parking inside this operator-configured realm. AAAA, CNAME, MX and TXT come from the instance's records API; otherwise address queries use its gateway. Suspended names return NXDOMAIN, an unavailable authoritative instance returns SERVFAIL, and neither condition transfers ownership to the primary registry. CNAME recursion is bounded. Instance reads are coalesced and cached for two seconds; existing downstream caches honor published TTL.
+
+This provides network DNS, not public registrar records or publicly trusted certificates. Do not report a public HTTPS gateway ready based on a successful DNS query alone.
