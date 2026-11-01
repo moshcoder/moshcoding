@@ -29,6 +29,7 @@
 #   MOSHCODE_USE_SYSTEM_NODE=1  keep an existing system Node 20+ instead of
 #                               installing the current LTS through mise
 #   MOSHCODE_ALLOW_ROOT=1   install as root anyway (see below)
+#   MOSHCODE_NO_AUTOUPDATE=1  skip the per-user hourly update check
 #
 # Do not install this with sudo. Every path below is derived from $HOME, which
 # sudo sets to /root — so the CLI lands in /root/.moshcode and the wrapper in
@@ -212,6 +213,65 @@ resolve_ref() {
     unset _tag
 }
 
+# Read the published version from the same ref the installer will install.
+# This is deliberately a separate request from the release API: GitHub can
+# rate-limit the API, while raw content for a known ref remains available.
+version_for_ref() {
+    _ref="$1"
+    _json="$(curl -fsSL --max-time 10 \
+        "https://raw.githubusercontent.com/$GH_REPO/$_ref/package.json" 2>/dev/null)" || return 1
+    printf '%s' "$_json" | node -e '
+      let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+        try { const v=JSON.parse(s).version; if (/^\d+\.\d+\.\d+$/.test(v)) process.stdout.write(v); }
+        catch {}
+      });
+    ' 2>/dev/null
+    unset _ref _json
+}
+
+# Print -1 when left is older, 0 when equal, and 1 when newer. Invalid
+# versions fail closed so the updater never reinstalls blindly or downgrades.
+version_compare() {
+    node -e '
+      const parse=s=>{const m=/^(\d+)\.(\d+)\.(\d+)$/.exec(s);return m&&m.slice(1).map(Number)};
+      const [a,b]=process.argv.slice(1),x=parse(a),y=parse(b);
+      if(!x||!y)process.exit(2);
+      for(let i=0;i<3;i++)if(x[i]!==y[i]){process.stdout.write(x[i]<y[i]?"-1":"1");process.exit(0)}
+      process.stdout.write("0");
+    ' "$1" "$2" 2>/dev/null
+}
+
+schedule_auto_update() {
+    if [ "${MOSHCODE_NO_AUTOUPDATE:-}" = "1" ]; then
+        info "MOSHCODE_NO_AUTOUPDATE=1 — skipping automatic updates"
+        return 0
+    fi
+    _mise_data="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
+    PATH="$HOME/.local/bin:$_mise_data/shims:$PATH"; export PATH
+    if ! (cd "$PKG_DIR" && MOSHCODE_AUTOUPDATE_BIN="$WRAPPER" node --input-type=module -e '
+        import("@profullstack/cli/auto-update").then(async ({installAutoUpdate}) => {
+          const result = await installAutoUpdate({name:"moshcode",command:process.env.MOSHCODE_AUTOUPDATE_BIN,args:["update","--if-newer"]});
+          if (!result.scheduled) { console.error(`moshcode: automatic updates not scheduled: ${result.reason}`); process.exitCode=1; }
+          else console.log(`moshcode: automatic updates scheduled with ${result.scheduler}`);
+        }).catch(error => { console.error(`moshcode: could not schedule automatic updates: ${error.message}`); process.exitCode=1; });
+    '); then
+        warn "automatic updates could not be scheduled"
+    fi
+    unset _mise_data
+}
+
+unschedule_auto_update() {
+    _mise_data="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}"
+    PATH="$HOME/.local/bin:$_mise_data/shims:$PATH"; export PATH
+    if [ -d "$PKG_DIR/node_modules/@profullstack/cli" ] && command -v node >/dev/null 2>&1; then
+        (cd "$PKG_DIR" && node --input-type=module -e '
+          import("@profullstack/cli/auto-update").then(({removeAutoUpdate}) => removeAutoUpdate("moshcode"))
+            .catch(error => { console.error(`moshcode: could not remove automatic update schedule: ${error.message}`); process.exitCode=1; });
+        ') || warn "automatic update schedule could not be removed"
+    fi
+    unset _mise_data
+}
+
 # ---------------------------------------------------------------------------
 # install the CLI from GitHub and its runtime dependencies from npm
 # ---------------------------------------------------------------------------
@@ -299,7 +359,7 @@ export PATH; unset _mise_data
 case "\${1:-}" in
     update|upgrade|self-update)
         shift || true
-        exec sh -c "curl -fsSL '\$INSTALL_URL' | sh -s -- update \$@" ;;
+        exec node "\$REAL_BIN" update "\$@" ;;
     remove|uninstall)
         shift || true
         exec sh -c "curl -fsSL '\$INSTALL_URL' | sh -s -- remove \$@" ;;
@@ -366,6 +426,7 @@ link_system_bin() {
 
 run_remove() {
     info "removing moshcode CLI"
+    unschedule_auto_update
     if [ -L "$SYSTEM_LINK_DIR/moshcode" ] && \
        [ "$(readlink "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null)" = "$WRAPPER" ]; then
         rm -f "$SYSTEM_LINK_DIR/moshcode" 2>/dev/null && ok "removed $SYSTEM_LINK_DIR/moshcode"
@@ -387,6 +448,7 @@ run_install() {
     ensure_bun
     install_cli
     write_wrapper
+    schedule_auto_update
     ensure_path
     link_system_bin
     printf '\n%sInstall complete.%s\n\n' "$GREEN" "$RESET"
@@ -411,12 +473,40 @@ run_install() {
 }
 
 run_update() {
+    check_not_sudo
     detect_os
-    info "checking for updates"
+    info "checking for a newer moshcode release"
     ensure_node
+    MOSHCODE_REF="$(resolve_ref)"
+    _current_version=""
+    if [ -f "$PKG_DIR/package.json" ]; then
+        _current_version="$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || true)"
+    fi
+    _latest_version="$(version_for_ref "$MOSHCODE_REF" || true)"
+    _force_update=0
+    for _arg in "$@"; do [ "$_arg" = "--force" ] && _force_update=1; done
+    if [ -n "$_current_version" ]; then
+        [ -n "$_latest_version" ] || fail "could not read the latest version from GitHub; existing install left unchanged"
+        _relation="$(version_compare "$_latest_version" "$_current_version" || echo invalid)"
+        case "$_relation" in
+            0)
+                if [ "$_force_update" != "1" ]; then
+                    ok "moshcode $_current_version is already current; skipping reinstall"
+                    write_wrapper
+                    schedule_auto_update
+                    ensure_path
+                    link_system_bin
+                    return 0
+                fi ;;
+            1) info "updating moshcode $_current_version → $_latest_version" ;;
+            -1) fail "installed moshcode $_current_version is newer than $_latest_version; refusing downgrade" ;;
+            *) fail "invalid installed/latest version; existing install left unchanged" ;;
+        esac
+    fi
     ensure_bun
     install_cli
     write_wrapper
+    schedule_auto_update
     ensure_path
     link_system_bin
     printf '\n%sUpdate complete.%s\n\n' "$GREEN" "$RESET"
@@ -426,7 +516,7 @@ CMD="${1:-install}"
 if [ $# -gt 0 ]; then shift; fi
 case "$CMD" in
     install)          run_install ;;
-    update|upgrade)   run_update ;;
+    update|upgrade)   run_update "$@" ;;
     remove|uninstall) run_remove ;;
     -h|--help|help)
         sed -n '2,30p' "$0" 2>/dev/null || printf 'moshcode installer — curl -fsSL %s | sh\n' "$INSTALL_URL" ;;
