@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { copyText } from "@/lib/clipboard";
+import VideoPlayer from "@/components/VideoPlayer";
 import { formatApiKeyTime } from "@/lib/api-key-time";
 import { formatStoredWebhookPayload } from "@/lib/webhook-payload";
 import {
@@ -723,7 +724,7 @@ function VideosPanel({ onError, onOk }: { onError: (m: string) => void; onOk: (m
             <div className="video-grid">
               {reels.map((m) => (
                 <figure key={m.id} className="video-cell">
-                  <video src={m.url} poster={m.thumb || undefined} controls preload="metadata" playsInline />
+                  <VideoPlayer className="video-stage" src={m.url} poster={m.thumb} />
                   <figcaption className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                     <span>{m.title}</span>
                     <button className="btn2 ghost" disabled={busy} onClick={() => del(m.id)}>Delete</button>
