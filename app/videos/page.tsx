@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Metadata } from "next";
 import { listMedia } from "@/lib/db";
 import { hasThumb } from "@/lib/media";
+import VideoPlayer from "@/components/VideoPlayer";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export default async function VideosPage() {
         <div className="video-grid">
           {reels.map((r) => (
             <figure key={r.src} className={`video-cell${r.portrait ? " portrait" : ""}`}>
-              <video src={r.src} poster={r.poster} controls preload="metadata" playsInline />
+              <VideoPlayer className="video-stage" src={r.src} poster={r.poster} />
               <figcaption>{r.title}</figcaption>
             </figure>
           ))}

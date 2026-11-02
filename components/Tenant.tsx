@@ -6,6 +6,7 @@ import SharePost from "./SharePost";
 import LinkIcon, { kindFromUrl } from "./LinkIcon";
 import CrawlProofAd from "./CrawlProofAd";
 import CodeCopy from "./CodeCopy";
+import VideoPlayer from "./VideoPlayer";
 import { renderMarkdown } from "@/lib/markdown";
 
 /**
@@ -113,7 +114,7 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
         {cfg.videos.length > 0 && (
           <div id="videos" className="t-videos" aria-label="Videos">
             {cfg.videos.map((v, i) => (
-              <video key={i} className="t-video" controls preload="metadata" playsInline src={v.url} poster={v.poster || undefined} />
+              <VideoPlayer key={i} className="t-video" src={v.url} poster={v.poster} />
             ))}
           </div>
         )}
@@ -122,9 +123,13 @@ export default function Tenant({ cfg }: { cfg: TenantConfig }) {
           <div className="t-assets" aria-label="Assets">
             {cfg.assets.map((a, i) =>
               a.kind === "video" ? (
-                <video key={i} className="t-asset t-asset-av" controls preload="metadata" playsInline src={a.url} title={a.label} />
+                <div key={i} className="t-asset t-asset-av" title={a.label}>
+                  <VideoPlayer src={a.url} />
+                </div>
               ) : a.kind === "audio" ? (
-                <audio key={i} className="t-asset t-asset-audio" controls preload="none" src={a.url} title={a.label} />
+                <div key={i} className="t-asset t-asset-audio" title={a.label}>
+                  <VideoPlayer src={a.url} audio />
+                </div>
               ) : (
                 <a key={i} className="t-asset" href={a.url} target="_blank" rel="noopener noreferrer" title={a.label}>
                   <img src={a.url} alt={a.label} loading="lazy" />
