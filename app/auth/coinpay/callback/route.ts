@@ -4,6 +4,8 @@ import { finishCoinpaySignIn, stateMatches, PENDING_COOKIES } from "@/lib/oauth"
 import { requestHosts, resolveOrigin, redirectUriFor } from "@/lib/oauth-origin";
 import { upsertUser, accountIdForCoinpay, linkCoinpay } from "@/lib/db";
 import { acceptInviteAndNotify, INVITE_COOKIE } from "@/lib/credits";
+import { recordCoinpayPass } from "@/lib/plan";
+import type { CoinpayPass } from "@profullstack/coinpay-onboard/pass";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
   // byte -- the callback arrives on whatever host that step named.
   const origin = resolveOrigin(requestHosts(req.headers), requestIsHttps(req));
 
-  let info: { sub: string; email: string | null; name: string | null };
+  let info: { sub: string; email: string | null; name: string | null; pass?: CoinpayPass };
   try {
     info = await finishCoinpaySignIn({ code, verifier, nonce, redirectUri: redirectUriFor(origin) });
   } catch (err: any) {
@@ -53,6 +55,7 @@ export async function GET(req: NextRequest) {
       const s = readSession(req.cookies.get(SESSION_COOKIE)?.value);
       if (!s?.sub?.startsWith("acct:")) return fail("sign in to your moshcoding account first");
       const r = await linkCoinpay(s.sub.slice("acct:".length), info.sub);
+      if (r.ok) await recordCoinpayPass(s.sub.slice("acct:".length), info.pass).catch((err) => console.error("[auth] pass:", err?.message));
       const res = NextResponse.redirect(`${origin}/dashboard?coinpay=${r.ok ? "linked" : r.reason}`);
       clearPending(res);
       return res;
@@ -61,6 +64,10 @@ export async function GET(req: NextRequest) {
     await upsertUser({ sub: info.sub, email: info.email, name: info.name });
     // Bound by sub; a first sign-in gets its own account (never one found by email).
     const accountId = await accountIdForCoinpay(info.sub);
+    // Profullstack Pass: the paid plan until it ends. Never blocks the sign-in.
+    if (accountId) {
+      await recordCoinpayPass(accountId, info.pass).catch((err) => console.error("[auth] pass:", err?.message));
+    }
 
     // Arrived through an invite link (/i/<code> set the cookie): accept it on
     // the account this CoinPay identity is bound to. Never blocks the sign-in.

@@ -232,6 +232,8 @@ async function initSchema(): Promise<void> {
   // config added via ALTER for accounts tables created before it existed.
   await addColumnIfMissing("accounts", "config", "TEXT NOT NULL DEFAULT '{}'");
   await addColumnIfMissing("accounts", "is_admin", "INTEGER NOT NULL DEFAULT 0");
+  // Profullstack Pass end (ISO), stored at CoinPay sign-in; see lib/plan.ts.
+  await addColumnIfMissing("accounts", "coinpay_pass_until", "TEXT");
   // The CoinPay identity (OIDC `sub`) an account is bound to. CoinPay does not
   // verify email addresses (its userinfo always says email_verified=false), so
   // a CoinPay sign-in must never be matched to an account by email alone once

@@ -134,6 +134,7 @@ export default function InvitesPage() {
           {plan && <span className="pill">{plan.plan === "paid" ? `paid plan${plan.paid_until ? ` · until ${day(plan.paid_until)}` : ""}` : "free plan"}</span>}
         </div>
         <p className="sub">A credit code adds days of the paid affiliate plan ($1/mo): set your own commission rate instead of the 80% floor.</p>
+        <p className="sub">Deposit $99 in your CoinPay wallet and get a free month: <a href="https://coinpayportal.com/pass">CoinPay Pass</a></p>
         <form className="row" onSubmit={redeem}>
           <input className="inp" placeholder="MOSH-XXXX-XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" />
           <button className="btn2" type="submit" disabled={busy || !code.trim()}>Redeem</button>
