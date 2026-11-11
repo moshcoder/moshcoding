@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     // Double opt-in: e-mail a confirmation link via Resend. If Resend isn't
     // configured (local dev / self-host), auto-confirm so the flow still works.
     if (result.token && isEmailConfigured()) {
-      const sent = await sendWaitlistVerification({ email, token: result.token, brand });
+      const sent = await sendWaitlistVerification({ email, token: result.token, brand, site: domain });
       if (!sent.ok) {
         // Never block a signup because email is misconfigured (bad key, unverified
         // domain, Resend down). Save them and auto-confirm; log loudly so the

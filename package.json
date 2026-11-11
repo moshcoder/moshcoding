@@ -14,6 +14,7 @@
   "dependencies": {
     "@profullstack/affiliates": "0.3.0",
     "@profullstack/coinpay-onboard": "^0.5.0",
+    "@profullstack/cross-promo": "^0.1.0",
     "@profullstack/footer": "latest",
     "@profullstack/libsql-pg": "^0.1.4",
     "@profullstack/player": "0.17.0",

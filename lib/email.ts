@@ -4,6 +4,8 @@
 // RESEND_API_KEY is unset — e.g. local dev — isEmailConfigured() is false and
 // callers fall back to auto-confirming so the flow still works offline.
 
+import { promoBlock } from "@profullstack/cross-promo";
+
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 /**
@@ -87,18 +89,31 @@ async function send(opts: {
 }
 
 /** Sends the "confirm your spot" email with a one-click verification link. */
-export function sendWaitlistVerification(opts: {
+export async function sendWaitlistVerification(opts: {
   email: string;
   token: string;
   brand?: string;
+  /** The tenant domain the signup came from (?dn=); defaults to moshcoding.com. */
+  site?: string;
 }): Promise<SendResult> {
   const brand = opts.brand || "moshcoding";
+  // "More from the network" for developers, below the confirm button so it
+  // never competes with it. Never the sending site or moshcoding itself.
+  // Never throws; falls back to the bundled catalog if the CDN is down.
+  const promo = await promoBlock({
+    site: opts.site || "moshcoding.com",
+    exclude: ["moshcoding.com"],
+    audience: "developers",
+    seed: opts.email,
+    theme: { accent: "#9EF01A", text: "#c9c9c9", muted: "#8a8a8a", bg: "#141416", border: "#26262a", heading: "#e7e7e7" },
+  });
   const url = `${appBaseUrl()}/api/waitlist/verify?token=${encodeURIComponent(opts.token)}`;
   const subject = `Confirm your spot in the ${brand} pit 🤘`;
   const text =
     `You're almost in. Confirm your email to lock in your spot on the ${brand} waitlist:\n\n` +
     `${url}\n\n` +
-    `If you didn't request this, just ignore it — no account is created.`;
+    `If you didn't request this, just ignore it — no account is created.` +
+    (promo.text ? `\n\n${promo.text}` : "");
   const safeBrand = escapeHtml(brand);
   const safeUrl = escapeHtml(url);
   const html = `<!doctype html>
@@ -123,6 +138,9 @@ export function sendWaitlistVerification(opts: {
             Didn't sign up? Ignore this — nothing happens.
           </p>
         </td></tr>
+      </table>
+      <table role="presentation" width="100%" style="max-width:480px">
+        <tr><td>${promo.html}</td></tr>
       </table>
     </td></tr>
   </table>
