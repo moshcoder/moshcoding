@@ -32,6 +32,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;700&family=Barlow+Condensed:wght@500;600;700&display=swap"
           rel="stylesheet"
         />
+        {/* WebMCP (@profullstack/webmcp): site_info and open_page for the AI agent in the
+            visitor's browser. No-op where the browser has no WebMCP. */}
+        <script
+          type="module"
+          data-webmcp=""
+          src="https://cdn.jsdelivr.net/npm/@profullstack/webmcp@0/src/embed.js"
+          data-pages='{"pit":"/pit","videos":"/videos","badges":"/badges","dashboard":"/dashboard","sign_up":"/signup"}'
+        />
       </head>
       <body>
         <div className="grain" aria-hidden="true" />
