@@ -1,6 +1,6 @@
 {
   "name": "moshcoding",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Code hard. Mosh harder. Next.js + Bun. Landing + one-line metal coming-soon pages with email waitlist and CoinPayPortal login.",
   "scripts": {
@@ -14,6 +14,7 @@
   "dependencies": {
     "@profullstack/affiliates": "0.3.0",
     "@profullstack/coinpay-onboard": "^0.5.0",
+    "@profullstack/cross-promo": "^0.1.0",
     "@profullstack/footer": "latest",
     "@profullstack/libsql-pg": "^0.1.4",
     "@profullstack/player": "0.17.0",
