@@ -24,3 +24,8 @@ test("host is taken from the request, without www or port", () => {
   assert.equal(hostFromHeaders(h), "moshcoders.com");
   assert.match(robotsTxt("moshcoders.com"), /^Sitemap: https:\/\/moshcoders\.com\/sitemap\.xml$/m);
 });
+
+test("only the app host names the bot.seo blog sitemap", () => {
+  assert.match(robotsTxt("moshcoding.com", "moshcoding.com"), /^Sitemap: https:\/\/moshcoding\.com\/blog\/sitemap\.xml$/m);
+  assert.doesNotMatch(robotsTxt("moshscript.com", "moshcoding.com"), /blog/);
+});
