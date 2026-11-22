@@ -15,6 +15,7 @@
 // per-user payout wallet on an account is for that user's OWN future earnings,
 // not for this charge.
 import { createCoinPayClient } from "@profullstack/stack/coinpay";
+import { coinpayFetch } from "./coinpay-ua";
 
 const ISSUER = (process.env.COINPAY_ISSUER || "https://coinpayportal.com").replace(/\/+$/, "");
 const API_KEY = process.env.COINPAY_API_KEY || "";
@@ -120,7 +121,7 @@ export async function createClaimPayment(opts: {
   amount?: string;
   holdMinutes?: number;
 }): Promise<CreatedPayment> {
-  const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER });
+  const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER, fetch: coinpayFetch });
   const holdMinutes = opts.holdMinutes ?? CLAIM_HOLD_MINUTES;
   const { sessionId, checkoutUrl, session } = await coinpay.createCheckout({
     amountUsd: claimPriceUsd(opts.amount || CLAIM_PRICE_USD),
@@ -154,7 +155,7 @@ export function isPaidStatus(s: unknown): boolean {
  */
 export async function fetchPaymentStatus(id: string): Promise<string | null> {
   try {
-    const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER });
+    const coinpay = createCoinPayClient({ apiKey: API_KEY, baseUrl: ISSUER, fetch: coinpayFetch });
     const { status } = isCheckoutSessionId(id) ? await coinpay.getCheckout(id) : await coinpay.getPayment(id);
     return status || null;
   } catch {

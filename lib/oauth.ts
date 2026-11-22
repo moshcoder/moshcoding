@@ -14,6 +14,7 @@ import {
   sameState,
   SIGN_IN_SCOPES,
 } from "@profullstack/coinpay-onboard/oauth";
+import { coinpayFetch } from "./coinpay-ua";
 
 export const COINPAY_ISSUER = (process.env.COINPAY_ISSUER || "https://coinpayportal.com").replace(/\/$/, "");
 export const COINPAY_CLIENT_ID = process.env.COINPAY_CLIENT_ID || "";
@@ -70,6 +71,6 @@ export async function finishCoinpaySignIn(
     clientId: COINPAY_CLIENT_ID,
     clientSecret: COINPAY_CLIENT_SECRET,
     base: COINPAY_ISSUER,
-    fetch: doFetch,
+    fetch: doFetch ?? coinpayFetch,
   });
 }
