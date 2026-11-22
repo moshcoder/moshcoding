@@ -34,7 +34,9 @@ export function sitemapXml(host: string, app = appHost()): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
-export function robotsTxt(host: string): string {
+export function robotsTxt(host: string, app = appHost()): string {
+  // The app host also carries bot.seo's on-site blog (nginx serves /blog).
+  const blog = host === app ? [`Sitemap: https://${host}/blog/sitemap.xml`] : [];
   return [
     "User-agent: *",
     "Allow: /",
@@ -42,6 +44,7 @@ export function robotsTxt(host: string): string {
     "Disallow: /dashboard",
     "",
     `Sitemap: https://${host}/sitemap.xml`,
+    ...blog,
     "",
   ].join("\n");
 }
