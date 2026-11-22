@@ -6,8 +6,8 @@ import pkg from "../package.json";
 export const COINPAY_UA = `moshcoding.com/${pkg.version} (+https://moshcoding.com)`;
 
 /** `fetch` with our User-Agent set, for the CoinPay clients' `fetch` hooks. */
-export const coinpayFetch: typeof fetch = (input, init = {}) => {
+export const coinpayFetch = ((input: RequestInfo | URL, init: RequestInit = {}) => {
   const headers = new Headers(init.headers);
   headers.set("user-agent", COINPAY_UA);
   return fetch(input, { ...init, headers });
-};
+}) as typeof fetch;
